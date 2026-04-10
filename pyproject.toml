@@ -3,7 +3,7 @@ name = "macro-context-reader"
 version = "0.1.0"
 description = "Macro regime detection system for EUR/USD based on Fed/ECB rhetoric, market pricing, rate differentials, and institutional positioning."
 requires-python = ">=3.11"
-dependencies = ["cot-reports>=0.1", "pyarrow>=14.0", "pydantic>=2.0"]
+dependencies = ["cot-reports>=0.1", "pyarrow>=14.0", "pydantic>=2.0", "fredapi>=0.5", "python-dotenv>=1.0"]
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0", "python-dotenv", "jupyter>=1.0", "macrosynergy>=0.8", "ewstools>=2.0"]

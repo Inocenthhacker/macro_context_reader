@@ -58,8 +58,11 @@ secrets/
 # But raw/processed temporary data are ignored
 data/raw/*
 data/processed/*
+data/market_pricing/*.parquet
+data/market_pricing/inflation_expectations/*.parquet
 !data/raw/.gitkeep
 !data/processed/.gitkeep
+!data/market_pricing/.gitkeep
 
 # Model weights
 *.pt
