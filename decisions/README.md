@@ -20,6 +20,7 @@ Each DEC follows the structure:
 |---|---|---|---|
 | DEC-001 | Switch from 2Y to 5Y horizon for real rate differential | Adopted | 2026-04-10 |
 | DEC-002 | Dual EUR yield curves (AAA + All) with credit stress spread | Adopted | 2026-04-10 |
+| DEC-004 | EU inflation expectations source — ECB SPF longer-term HICP | Adopted | 2026-04-11 |
 
 ## Rules
 
