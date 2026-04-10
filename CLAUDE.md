@@ -142,6 +142,21 @@ RISCURI CUNOSCUTE ALE PROIECTULUI:
   - Modelele NLP antrenate 2021–2023 sunt over-fitted pe ciclu de hiking
   - Limbajul Fed se schimbă cu Chair-ul → fine-tuning periodic necesar
   - Beige Book impact intraday pe forex: gap de research — orizont săptămâni, nu ore
+
+REGULĂ OBLIGATORIE — VERIFICARE SERII ECB SDMX:
+  Codurile SDMX ale ECB Data Portal sunt prost documentate și frecvent contraintuitive
+  (ex: în yield curve, G_N_A = AAA only, G_N_C = All issuers — opusul a ce sugerează
+  ordinea alfabetică). Orice serie ECB nouă introdusă în cod se verifică OBLIGATORIU
+  prin câmpul `TITLE_COMPL` din metadata SDMX înainte de commit. Nu se acceptă presupuneri
+  bazate pe naming convention sau inferență din alte coduri similare.
+
+  Procedură:
+  1. Fetch metadata: ecbdata.get_series(series_key, lastnobservations=1) și citește coloana TITLE_COMPL
+  2. Citește câmpul TITLE_COMPL — descrierea umană completă a seriei
+  3. Confirmă că seria corespunde semantic cu intenția codului
+  4. Documentează în decisions/DEC-XXX dacă apare orice ambiguitate
+
+  Referință incident: DEC-002 (PRD-200/CC-3, EU rates dual yield curves).
 </project_context>
 
 <prd_system>
