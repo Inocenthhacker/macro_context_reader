@@ -82,13 +82,38 @@ class USRatesRow(BaseModel):
 
 
 class EURRatesRow(BaseModel):
-    """Un singur rând de rate EUR (guvernamentale, proxy pentru OIS)."""
+    """Un singur rând de rate EUR 5Y din ECB Yield Curve.
+
+    Conține ambele variante AAA-only și All issuers, plus credit stress
+    spread calculat. AAA-only e folosit ca input principal în real_rate_diff
+    (simetrie metodologică cu US Treasury). All issuers și spread-ul sunt
+    preservate ca semnale paralele independente.
+
+    Vezi DEC-002 (decisions/DEC-002-dual-eur-yield-curves.md) pentru context.
+
+    Source: ECB Yield Curve, Svensson model, daily TARGET business days.
+    Series:
+    - YC.B.U2.EUR.4F.G_N_A.SV_C_YM.SR_5Y (AAA — G_N_A = triple A rated)
+    - YC.B.U2.EUR.4F.G_N_C.SV_C_YM.SR_5Y (All — G_N_C = all ratings)
+
+    Refs: PRD-200 CC-3, DEC-002
+    """
 
     model_config = ConfigDict(frozen=True)
 
     date: datetime
-    eu_5y_nominal: float = Field(
-        ..., description="ECB govt yield 5Y, proxy pentru OIS (spread <15bp)"
+    eu_5y_nominal_aaa: float = Field(
+        ...,
+        description="ECB AAA govt yield 5Y, methodological principal",
+    )
+    eu_5y_nominal_all: float = Field(
+        ...,
+        description="ECB all-issuer govt yield 5Y, parallel signal",
+    )
+    eu_credit_stress_5y: float = Field(
+        ...,
+        description="Spread = eu_5y_nominal_all - eu_5y_nominal_aaa, "
+                    "indicator de stres financiar zona euro",
     )
 
 
