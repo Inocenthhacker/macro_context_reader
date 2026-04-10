@@ -1,1 +1,1 @@
-# market_pricing tests
+"""Tests pentru Layer 2 — Market Pricing."""
