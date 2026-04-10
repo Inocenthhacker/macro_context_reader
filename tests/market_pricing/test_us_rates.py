@@ -1,8 +1,9 @@
 """Tests pentru us_rates.py — orizont 5Y.
 
-Folosește mock pentru FRED client — zero network calls în suite.
+Folosește mock pentru FRED client — zero network calls în unit tests.
+Testele cu @pytest.mark.integration necesită FRED_API_KEY în env.
 
-Refs: PRD-200 CC-2b, DEC-001
+Refs: PRD-200 CC-2b/CC-4, DEC-001
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
+from pydantic import ValidationError
 
 from macro_context_reader.market_pricing.us_rates import (
     fetch_us_rates,
@@ -65,16 +67,16 @@ def test_fetch_returns_dataframe(mock_fred_client):
 def test_fetch_has_required_columns(mock_fred_client):
     """DataFrame-ul conține toate coloanele obligatorii."""
     df = fetch_us_rates(client=mock_fred_client)
-    required = {"date", "us_5y_nominal", "us_5y_real", "us_breakeven_implied"}
+    required = {"date", "us_5y_nominal", "us_5y_real", "us_5y_breakeven"}
     assert required.issubset(set(df.columns))
 
 
-def test_real_yield_calculation(mock_fred_client):
-    """us_breakeven_implied = us_5y_nominal - us_5y_real."""
+def test_breakeven_calculation(mock_fred_client):
+    """us_5y_breakeven = us_5y_nominal - us_5y_real."""
     df = fetch_us_rates(client=mock_fred_client)
     computed = df["us_5y_nominal"] - df["us_5y_real"]
     pd.testing.assert_series_equal(
-        df["us_breakeven_implied"],
+        df["us_5y_breakeven"],
         computed,
         check_names=False,
     )
@@ -125,3 +127,34 @@ def test_save_creates_parent_directory(mock_fred_client, tmp_path):
     output = tmp_path / "nested" / "dir" / "us_rates.parquet"
     save_us_rates(df, output_path=output)
     assert output.exists()
+
+
+def test_pydantic_validation_catches_invalid_row():
+    """Pydantic validation rejectează rânduri cu NaN în câmpuri obligatorii."""
+    from macro_context_reader.market_pricing.us_rates import _validate_rows
+
+    bad_df = pd.DataFrame({
+        "date": [datetime(2020, 1, 1)],
+        "us_5y_nominal": [float("nan")],
+        "us_5y_real": [0.5],
+        "us_5y_breakeven": [float("nan")],
+    })
+    with pytest.raises(ValidationError):
+        _validate_rows(bad_df)
+
+
+@pytest.mark.integration
+def test_fetch_real_fred_data():
+    """Integration: fetch real din FRED, validare range-uri plauzibile."""
+    import os
+    if not os.getenv("FRED_API_KEY"):
+        pytest.skip("FRED_API_KEY not set")
+
+    df = fetch_us_rates(
+        start=datetime(2020, 1, 1),
+        end=datetime(2024, 12, 31),
+    )
+    assert len(df) > 1000
+    assert df["us_5y_nominal"].between(-1, 8).all()
+    assert df["us_5y_breakeven"].between(-1, 5).all()
+    assert df["us_5y_real"].notna().all()

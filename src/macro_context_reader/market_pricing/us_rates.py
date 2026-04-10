@@ -11,7 +11,9 @@ IMPORTANT: Acest modul folosește orizont 5Y, nu 2Y.
 Motivul: US Treasury nu emite TIPS pe 2Y — DFII2 nu există în FRED.
 Vezi decisions/DEC-001-switch-to-5y-horizon.md pentru context complet.
 
-Refs: PRD-200 CC-2b, DEC-001, FRED https://fred.stlouisfed.org/
+Fiecare rând e validat prin USRatesRow (Pydantic) înainte de return.
+
+Refs: PRD-200 CC-2b/CC-4, DEC-001, FRED https://fred.stlouisfed.org/
 """
 
 from __future__ import annotations
@@ -24,6 +26,8 @@ from typing import Optional
 import pandas as pd
 from dotenv import load_dotenv
 from fredapi import Fred
+
+from macro_context_reader.market_pricing.schemas import USRatesRow
 
 
 DEFAULT_START_DATE = datetime(2015, 1, 1)
@@ -62,7 +66,7 @@ def fetch_us_rates(
         client: Client FRED opțional (pentru testing cu mock)
 
     Returns:
-        DataFrame cu coloanele: date, us_5y_nominal, us_5y_real, us_breakeven_implied
+        DataFrame cu coloanele: date, us_5y_nominal, us_5y_real, us_5y_breakeven
         Frecvență zilnică (business days), sortat ascending pe dată.
 
     Raises:
@@ -96,13 +100,26 @@ def fetch_us_rates(
     df["date"] = pd.to_datetime(df["date"])
 
     # Breakeven inflation implicit = nominal - real
-    df["us_breakeven_implied"] = df["us_5y_nominal"] - df["us_5y_real"]
+    df["us_5y_breakeven"] = df["us_5y_nominal"] - df["us_5y_real"]
 
     # Drop rânduri unde ambele sunt NaN
     df = df.dropna(subset=["us_5y_nominal", "us_5y_real"], how="all")
     df = df.sort_values("date").reset_index(drop=True)
 
+    # Pydantic row-by-row validation
+    _validate_rows(df)
+
     return df
+
+
+def _validate_rows(df: pd.DataFrame) -> None:
+    """Validează fiecare rând prin USRatesRow Pydantic model.
+
+    Raises:
+        pydantic.ValidationError: dacă orice rând e invalid
+    """
+    for row in df.to_dict(orient="records"):
+        USRatesRow.model_validate(row)
 
 
 def save_us_rates(
@@ -118,7 +135,7 @@ def save_us_rates(
     Returns:
         Path-ul fișierului scris
     """
-    required_cols = {"date", "us_5y_nominal", "us_5y_real", "us_breakeven_implied"}
+    required_cols = {"date", "us_5y_nominal", "us_5y_real", "us_5y_breakeven"}
     missing = required_cols - set(df.columns)
     if missing:
         raise ValueError(f"DataFrame-ul lipsește coloanele: {missing}")

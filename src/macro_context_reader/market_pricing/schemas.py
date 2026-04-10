@@ -16,7 +16,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field, ConfigDict
+import math
+
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 
 
 AccuracyTier = Literal["highest", "high", "medium", "low", "baseline"]
@@ -76,9 +78,16 @@ class USRatesRow(BaseModel):
     date: datetime
     us_5y_nominal: float
     us_5y_real: float
-    us_breakeven_implied: float = Field(
+    us_5y_breakeven: float = Field(
         ..., description="Calculat ca us_5y_nominal - us_5y_real"
     )
+
+    @model_validator(mode="after")
+    def _reject_nan(self) -> USRatesRow:
+        for name in ("us_5y_nominal", "us_5y_real", "us_5y_breakeven"):
+            if math.isnan(getattr(self, name)):
+                raise ValueError(f"{name} must not be NaN")
+        return self
 
 
 class EURRatesRow(BaseModel):
