@@ -1,0 +1,16 @@
+# <type>(<scope>): <short description> [PRD-XXX/CC-X or DEC-XXX]
+#
+# Types: feat, fix, docs, test, refactor, chore, research
+# Scope: module name (positioning, regime, market_pricing, etc.)
+#
+# Body: explain what and why (not how)
+#
+# Footer: references, breaking changes, superseded decisions
+#
+# Example:
+# feat(market_pricing): add US rates ingestion [PRD-200/CC-1]
+#
+# Adds fredapi-based pipeline for DGS2 and DFII2 series.
+# Produces us_rates.parquet with daily data from 2015.
+#
+# Refs: PRD-200
