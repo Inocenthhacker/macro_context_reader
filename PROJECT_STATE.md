@@ -1,7 +1,7 @@
 # PROJECT_STATE.md — Macro Context Reader
 ## Snapshot stare reală
 
-> **Ultima actualizare:** 2026-04-09
+> **Ultima actualizare:** 2026-04-11
 > **Sursa adevărului:** generat pe baza `audit/STATE_AUDIT_001.md` + `audit/STATE_AUDIT_002.md`
 > **Rol:** complementar cu `ROADMAP.md`. ROADMAP = plan. PROJECT_STATE = realitate.
 > **Regenerare:** la fiecare milestone sau schimbare de status PRD.
@@ -11,6 +11,7 @@
 ## Status Two-Line
 
 **Faza 0 complete.** Positioning layer (PRD-400 + PRD-401) 100% implementat și testat cu date reale CFTC.
+**PRD-200 (Market Pricing) In Progress.** CC-1..CC-4 done: US 5Y rates (FRED), EU 5Y rates dual (ECB), Pydantic schemas + validation. CC-5 (SPF inflation expectations) în PHASE 1 discovery complete, PHASE 2 pending.
 **Restul layerelor** (regime, monitoring, divergence, rhetoric, output) sunt schelet disciplinat cu 55 funcții `NotImplementedError`, gata de implementare.
 
 ---
@@ -20,13 +21,14 @@
 | Modul | Fișiere | COMPLETE | SKELETON | % | Status PRD |
 |---|---|---|---|---|---|
 | `positioning/` | 5 | 5 | 0 | **100%** | PRD-400, PRD-401 — ✅ Done |
+| `market_pricing/` | 5 | 4 | 1 | **80%** | PRD-200 — 🟢 In Progress (CC-1..CC-4 ✅) |
 | `regime/` | 4 | 0 | 4 | 0% | PRD-050 — Draft |
 | `monitoring/` | 3 | 0 | 3 | 0% | PRD-051 — Draft |
 | `divergence/` | 2 | 0 | 2 | 0% | PRD-300 — Reserved |
 | `rhetoric/concept_framework/` | 3 | 0 | 3 | 0% | PRD-102 — Draft |
 | `output/` | 9 | 0 | 9 | 0% | PRD-500 — Reserved |
 
-**Overall:** 6 / 27 fișiere COMPLETE = **22% file-level completion**
+**Overall:** 10 / 32 fișiere COMPLETE = **31% file-level completion**
 **Funcții schelet rămase:** 55
 
 ---
@@ -40,6 +42,10 @@
 | `positioning/options_signal.py` | 59 | Fetch EUR put/call ratio, normalizare, semnal options skew |
 | `positioning/retail_signal.py` | 53 | Fetch Myfxbook retail sentiment, semnal contrarianș |
 | `positioning/tactical_composite.py` | 85 | Agregare OI + Options + Retail cu graceful degradation la surse lipsă |
+| `market_pricing/schemas.py` | ~120 | Pydantic schemas: USRatesRow, EURRatesRow, InflationExpectationRow, MethodMetadata, RealRateDiffRow |
+| `market_pricing/us_rates.py` | ~130 | US 5Y rates ingestion FRED (DGS5/DFII5), Pydantic validation, Parquet output |
+| `market_pricing/eu_rates.py` | ~180 | EU 5Y rates dual ECB (AAA + All issuers), credit stress spread, Parquet output |
+| `market_pricing/inflation_expectations/base.py` | ~60 | Protocol `InflationExpectationsMethod` + base schemas |
 
 ---
 
@@ -83,8 +89,8 @@
 | Path | Dimensiune | Rânduri | Perioada | Observații |
 |---|---|---|---|---|
 | `data/positioning/cot_eur.parquet` | 21.9 KB | 787 | 2020-01-07 → 2026-03-31 | Date CFTC reale, dtypes corecte, percentile normalizate în [0, 1] |
-
-**Coloane:** `date` (datetime64), `lev_net` (int64), `am_net` (int64), `lev_delta_wow` (float64), `lev_percentile_52w` (float64)
+| `data/market_pricing/us_rates.parquet` | ~55 KB | 2817 | 2015-01-02 → 2026-04-08 | DGS5 + DFII5 reale FRED. Coloane: date, us_5y_nominal, us_5y_real, us_5y_breakeven |
+| `data/market_pricing/eu_rates.parquet` | ~65 KB | 2874 | 2015-01-02 → 2026-04-09 | ECB Yield Curve AAA + All. Coloane: date, eu_5y_nominal_aaa, eu_5y_nominal_all, eu_credit_stress_5y |
 
 **Directoare data/ goale (cu `.gitkeep`):** `data/regime/`, `data/concept_dictionaries/`, `data/bba_configs/`, `data/raw/`, `data/processed/`
 
@@ -95,6 +101,7 @@
 | Modul | Test files | Funcții test | Status | Acoperire |
 |---|---|---|---|---|
 | `positioning/` | 2 | 12 | ✅ Verde (12/12 pass) | Completă |
+| `market_pricing/` | 3 | 30 | ✅ Verde (30/30 pass) | CC-1..CC-4 complete |
 | `regime/` | 0 | 0 | ❌ Zero | Datorie tehnică |
 | `monitoring/` | 0 | 0 | ❌ Zero | Datorie tehnică |
 | `divergence/` | 0 | 0 | ❌ Zero | Datorie tehnică |
@@ -108,7 +115,7 @@
 ## 6. Stack Tehnic Instalat vs. Planificat
 
 **Instalat în `pyproject.toml`:**
-- Core: `cot-reports>=0.1`, `pyarrow>=14.0`
+- Core: `cot-reports>=0.1`, `pyarrow>=14.0`, `pydantic>=2.0`, `fredapi>=0.5`, `python-dotenv>=1.0`, `ecbdata>=0.1.1`
 - Dev: `pytest>=7.0`, `python-dotenv`, `jupyter>=1.0`, `macrosynergy>=0.8`, `ewstools>=2.0`
 
 **Planificat (ROADMAP Secțiunea 6) — de adăugat incremental:**
@@ -120,15 +127,13 @@
 
 ## 7. Următorul Pas Logic
 
-**Blocker curent:** PRD-200 (Market Pricing Pipeline) nu există ca document formal.
+**PRD-200 (Market Pricing Pipeline) — In Progress.** CC-1..CC-4 done. CC-5 PHASE 1 discovery complete, PHASE 2 pending decizia tenor inflation expectations (SPF.Q.U2.HICP.POINT.LT.Q.AVG ales ca sursă).
 
-**Ordinea recomandată (conform D1):**
-1. Creare PRD-200 Draft → aprobare
-2. CC-1: FRED client (fredapi) pentru US_2Y, breakeven, EUR/USD
-3. CC-2: ECB Data Portal client pentru EUR OIS + HICP
-4. CC-3: calcul `real_rate_differential` cu teste (regula D14)
-5. CC-4: notebook de validare — plot real_rate_diff vs EUR/USD pe 5 ani
-6. Milestone Faza 1: corelație vizuală confirmată
+**Ordinea recomandată (pașii rămași):**
+1. CC-5 PHASE 2: implementare `ecb_spf.py` + teste + DEC-004
+2. CC-6: calcul `real_rate_differential` cu teste (dependency injection)
+3. CC-7: notebook de validare — plot real_rate_diff vs EUR/USD pe 5 ani
+4. Milestone Faza 1: corelație vizuală confirmată
 
 **Faze pending după Faza 1:** Faza 2 (NLP), Faza 4 (Divergence), Faza 5 (Concept), Faza 6 (DST), Faza 7 (Live).
 

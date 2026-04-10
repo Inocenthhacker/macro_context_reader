@@ -1,6 +1,6 @@
 # Macro Context Reader — EUR/USD Regime Detector
 ## Roadmap Complet v1.0
-> **Generat:** Aprilie 2026 | **Ultima actualizare:** 2026-04-09 | **Versiune CLAUDE.md:** 1.4
+> **Generat:** Aprilie 2026 | **Ultima actualizare:** 2026-04-11 | **Versiune CLAUDE.md:** 1.4
 
 ---
 
@@ -99,7 +99,7 @@ kalman_filter = filterpy                   ← stare latentă + incertitudine
 
 **Formula real rate differential:**
 ```
-real_rate_diff = (US_2Y_yield - US_breakeven_2Y) - (EUR_2Y_OIS - EUR_inflation_2Y)
+real_rate_diff = (US_5Y_real) - (EUR_5Y_nominal_aaa - EUR_inflation_5Y)  # DEC-001: 5Y horizon
 ```
 
 **Information change signals (Macrosynergy 2024):**
@@ -164,7 +164,7 @@ surprise_score = NLP_hawkish_score - FedWatch_hawkish_probability
 | **PRD-051** | Regime Monitor — Standalone Dashboard | 🔵 Draft | Infrastructure | ✅ CC-1 Done |
 | **PRD-101** | FOMC-RoBERTa Baseline | ❌ Necreat | Stratul 1 | ❌ |
 | **PRD-102** | Concept Indicator Framework (Aruoba-Drechsel) | 🔵 Draft | Stratul 1 | ✅ CC-1 Done |
-| **PRD-200** | Market Pricing Pipeline | ❌ Necreat | Stratul 2 | ❌ |
+| **PRD-200** | Market Pricing Pipeline | 🟢 In Progress | Stratul 2 | Parțial (CC-1..CC-4 ✅) |
 | **PRD-300** | Divergence & Sentiment Trend Signal | 🟡 Reserved | Stratul 3 | ✅ CC-0 Done |
 | **PRD-400** | COT Structural Positioning | ✅ **Done** | Stratul 4 | ✅ |
 | **PRD-401** | Tactical Positioning — OI + Options + Retail | ✅ **Done** | Stratul 4 | ✅ |
@@ -205,8 +205,14 @@ macro_context_reader/
 └── src/macro_context_reader/
     │
     ├── config.py                      ← configurație generală proiect
-    ├── market_pricing/                ← PRD-200 (placeholder director, gol)
-    │   └── __init__.py
+    ├── market_pricing/                ← PRD-200 (CC-1..CC-4 done)
+    │   ├── __init__.py
+    │   ├── schemas.py                ← CC-1: Pydantic schemas
+    │   ├── us_rates.py               ← CC-2b/CC-4: US 5Y rates (DGS5/DFII5)
+    │   ├── eu_rates.py               ← CC-3: EU 5Y rates (dual AAA + All)
+    │   └── inflation_expectations/
+    │       ├── __init__.py
+    │       └── base.py               ← CC-1: Protocol definition
     │
     ├── regime/                        ← PRD-050 ✅ PLACEHOLDER DONE
     │   ├── __init__.py                ← MacroRegime enum + lazy imports
@@ -294,7 +300,7 @@ macro_context_reader/
 
 | Task | PRD | Status |
 |---|---|---|
-| FRED + ECB ingestie: real_rate_differential | PRD-200 (de creat) | ❌ |
+| FRED + ECB ingestie: real_rate_differential | PRD-200 | 🟡 In Progress (CC-1..CC-4 ✅, CC-5 PHASE 1 ✅) |
 | COT structural pipeline + tests | PRD-400 / CC-1, CC-2 | ❌ |
 | Macro Regime Classifier — implementare | PRD-050 / CC-1, CC-2, CC-3 | ❌ |
 | Historical Analog Detector — implementare | PRD-050 / CC-2b | ❌ |
@@ -505,13 +511,17 @@ PRD-401 (CC-1..CC-4) — Tactical positioning ✅
 
 ### 🎯 Următorul pas — Faza 1 (Ancora Fundamentală)
 Conform D1 (real_rate_diff → NLP → positioning → DST), Faza 1 este următoarea.
-Blocker: **PRD-200 nu există ca document PRD formal.**
-
-Ordinea logică:
-1. Creare PRD-200 Draft (Market Pricing Pipeline — FRED + ECB + real_rate_differential)
-2. Aprobare PRD-200 → Approved
-3. Generare prompturi Claude Code pentru PRD-200 (CC-1 FRED client → CC-2 ECB client → CC-3 real rate differential → CC-4 tests + validation plot)
-4. Milestone Faza 1: corelație vizuală real_rate_diff ↔ EUR/USD confirmată
+### 🟢 În execuție — PRD-200 (Market Pricing Pipeline)
+```
+PRD-200 / CC-1: Protocol base + schemas Pydantic              ✅ Done (fae3e85)
+PRD-200 / CC-2b: US rates 5Y (DGS5/DFII5)                    ✅ Done (1a8c91a) [DEC-001]
+PRD-200 / CC-3: EU rates 5Y dual AAA + All                    ✅ Done (a976684) [DEC-002]
+PRD-200 / CC-4: Pydantic validation + integration marker      ✅ Done (888ba69)
+PRD-200 / CC-5: ECB SPF inflation expectations                🟡 PHASE 1 discovery complete
+PRD-200 / CC-6: real_rate_diff.py + teste                     ❌ Not Started
+PRD-200 / CC-7: Notebook 02_layer2_market_pricing.ipynb       ❌ Not Started
+```
+Milestone Faza 1: corelație vizuală real_rate_diff ↔ EUR/USD confirmată — pending CC-5..CC-7
 
 ### 🔵 Pending aprobare (Draft)
 ```
@@ -521,6 +531,7 @@ PRD-050 / CC-2b implementare (analog detector Mahalanobis)
 PRD-051 / CC-1 (notebooks/06_regime_monitor.ipynb creare)
 PRD-051 / CC-2..CC-4 (dashboard Streamlit complet)
 PRD-102 / CC-2..CC-6 (concept framework implementare)
+PRD-202 / CC-1..CC-5 (tactical short-horizon signal layer)
 PRD-300 / CC-1..CC-5 (divergence signal implementare)
 PRD-500 / CC-1..CC-5 (DST aggregation implementare)
 ```
