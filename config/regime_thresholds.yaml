@@ -1,0 +1,23 @@
+# Macro Regime Classifier — Thresholds Configuration
+# PRD-050 — toate valorile sunt prior-uri rezonabile, calibrate empiric la activare
+# Priority order: financial_stability > inflation > growth
+# Referinta: Thim (2012), protocolul ABCDE de triage medical
+
+financial_stability:
+  vix_threshold: 30.0              # VIX > 30 -> quiet mode
+  hy_spread_threshold_bps: 500     # HY spread > 500bps -> quiet mode
+  vix_elevated_threshold: 25.0     # VIX > 25 + spread accelerating -> quiet mode
+  spread_accelerating_days: 5      # zile de accelerare pentru confirmare
+
+inflation:
+  cpi_yoy_threshold: 3.0           # CPI YoY > 3% -> regim inflatie
+  require_cpi_accelerating: true   # CPI trebuie sa accelereze (trend pozitiv)
+  hy_spread_max_bps: 500           # exclud daca e si stres financiar
+
+growth:
+  cpi_yoy_max: 3.0                 # CPI sub prag -> nu e regim inflatie
+  nfp_3m_avg_threshold_k: 100      # NFP sub 100k -> growth concerns
+  require_unemployment_rising: false  # optional - TBD empiric
+
+regime_confirmation_days: 5        # zile consecutive pentru confirmare switch
+# NOTE: 5 zile = 1 saptamana trading - evita false switches pe date noisy
