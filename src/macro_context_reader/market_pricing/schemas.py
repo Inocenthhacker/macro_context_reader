@@ -156,6 +156,49 @@ class EUInflationRow(BaseModel):
         return self
 
 
+class RealRateDifferentialRow(BaseModel):
+    """Un singur rând de real rate differential composite (US 5Y − EU 5Y).
+
+    Combină trei surse:
+    - us_rates.py: DFII5 (US 5Y TIPS real yield, daily)
+    - eu_rates.py: ECB AAA 5Y nominal yield (daily)
+    - eu_inflation.py: ECB SPF longer-term HICP forecast (quarterly, forward-filled)
+
+    Formula: real_rate_differential = us_5y_real - eu_5y_real
+    Unde: eu_5y_real = eu_5y_nominal_aaa - eu_inflation_expectations_5y
+
+    Refs: PRD-200 CC-6, DEC-001, DEC-002, DEC-004
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    date: datetime
+    us_5y_real: float
+    eu_5y_nominal_aaa: float
+    eu_inflation_expectations_5y: float
+    eu_5y_real: float = Field(
+        ...,
+        description="eu_5y_nominal_aaa - eu_inflation_expectations_5y",
+    )
+    real_rate_differential: float = Field(
+        ...,
+        description="us_5y_real - eu_5y_real, în procente",
+    )
+
+    @model_validator(mode="after")
+    def _reject_nan(self) -> RealRateDifferentialRow:
+        for name in (
+            "us_5y_real",
+            "eu_5y_nominal_aaa",
+            "eu_inflation_expectations_5y",
+            "eu_5y_real",
+            "real_rate_differential",
+        ):
+            if math.isnan(getattr(self, name)):
+                raise ValueError(f"{name} must not be NaN")
+        return self
+
+
 class FXRow(BaseModel):
     """Un singur rând de FX."""
 
