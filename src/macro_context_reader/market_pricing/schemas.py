@@ -126,6 +126,36 @@ class EURRatesRow(BaseModel):
     )
 
 
+class EUInflationRow(BaseModel):
+    """Un singur rând de EU inflation expectations 5Y din ECB SPF.
+
+    Sursa: ECB Survey of Professional Forecasters, longer-term HICP
+    point forecast average. Quarterly, 1999-present.
+
+    Serie: SPF.Q.U2.HICP.POINT.LT.Q.AVG
+    Orizont: 5 calendar years ahead (Q3/Q4) sau 4 years ahead (Q1/Q2).
+
+    Vezi DEC-004 (decisions/DEC-004-eu-inflation-source-spf.md).
+
+    Refs: PRD-200 CC-5, DEC-004
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    date: datetime
+    eu_inflation_expectations_5y: float = Field(
+        ...,
+        description="ECB SPF longer-term HICP forecast "
+                    "(4-5Y horizon, quarterly survey, point forecast average)",
+    )
+
+    @model_validator(mode="after")
+    def _reject_nan(self) -> EUInflationRow:
+        if math.isnan(self.eu_inflation_expectations_5y):
+            raise ValueError("eu_inflation_expectations_5y must not be NaN")
+        return self
+
+
 class FXRow(BaseModel):
     """Un singur rând de FX."""
 
