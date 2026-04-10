@@ -1,8 +1,8 @@
-"""Tests pentru us_rates.py.
+"""Tests pentru us_rates.py — orizont 5Y.
 
 Folosește mock pentru FRED client — zero network calls în suite.
 
-Refs: PRD-200 CC-2
+Refs: PRD-200 CC-2b, DEC-001
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from macro_context_reader.market_pricing.us_rates import (
     fetch_us_rates,
     save_us_rates,
     FRED_SERIES_NOMINAL,
-    FRED_SERIES_BREAKEVEN,
+    FRED_SERIES_REAL,
 )
 
 
@@ -31,16 +31,16 @@ def mock_fred_client():
         data=[2.0 + 0.01 * i for i in range(len(dates))],
         index=dates,
     )
-    breakeven_values = pd.Series(
-        data=[1.5 + 0.005 * i for i in range(len(dates))],
+    real_values = pd.Series(
+        data=[0.5 + 0.005 * i for i in range(len(dates))],
         index=dates,
     )
 
     def get_series_mock(series_id, **kwargs):
         if series_id == FRED_SERIES_NOMINAL:
             return nominal_values
-        elif series_id == FRED_SERIES_BREAKEVEN:
-            return breakeven_values
+        elif series_id == FRED_SERIES_REAL:
+            return real_values
         return pd.Series(dtype=float)
 
     client.get_series.side_effect = get_series_mock
@@ -65,16 +65,16 @@ def test_fetch_returns_dataframe(mock_fred_client):
 def test_fetch_has_required_columns(mock_fred_client):
     """DataFrame-ul conține toate coloanele obligatorii."""
     df = fetch_us_rates(client=mock_fred_client)
-    required = {"date", "us_2y_nominal", "us_2y_real", "us_breakeven_implied"}
+    required = {"date", "us_5y_nominal", "us_5y_real", "us_breakeven_implied"}
     assert required.issubset(set(df.columns))
 
 
 def test_real_yield_calculation(mock_fred_client):
-    """us_2y_real = us_2y_nominal - us_breakeven_implied."""
+    """us_breakeven_implied = us_5y_nominal - us_5y_real."""
     df = fetch_us_rates(client=mock_fred_client)
-    computed = df["us_2y_nominal"] - df["us_breakeven_implied"]
+    computed = df["us_5y_nominal"] - df["us_5y_real"]
     pd.testing.assert_series_equal(
-        df["us_2y_real"],
+        df["us_breakeven_implied"],
         computed,
         check_names=False,
     )

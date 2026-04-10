@@ -1,17 +1,17 @@
-"""US Rates ingestion din FRED.
+"""US Rates ingestion din FRED — orizont 5Y.
 
-Descarcă US Treasury 2Y nominal yield și 5Y breakeven inflation din FRED API:
-- DGS2: 2-Year Treasury Constant Maturity Rate (nominal)
-- T5YIE: 5-Year Breakeven Inflation Rate (market-based inflation expectation)
+Descarcă US Treasury 5Y nominal și real yields din FRED API:
+- DGS5: 5-Year Treasury Constant Maturity Rate (nominal)
+- DFII5: 5-Year Treasury Inflation-Indexed Security (real yield, TIPS)
 
-Nota: FRED nu publică DFII2 (2Y TIPS real yield) — US Treasury nu emite 2Y TIPS.
-Cel mai scurt orizont TIPS disponibil e 5Y (DFII5). Folosim T5YIE (5Y breakeven)
-ca proxy standard pentru inflația așteptată US. Real yield implicit:
-  us_2y_real = DGS2 - T5YIE (aproximare — maturity mismatch 2Y vs 5Y)
+Breakeven inflation implicit = DGS5 - DFII5 (forward-looking inflation
+expectation pe 5 ani, conform metodologiei standard Fed).
 
-Aceasta este practica standard în literatura academică și rapoartele Fed/ECB.
+IMPORTANT: Acest modul folosește orizont 5Y, nu 2Y.
+Motivul: US Treasury nu emite TIPS pe 2Y — DFII2 nu există în FRED.
+Vezi decisions/DEC-001-switch-to-5y-horizon.md pentru context complet.
 
-Refs: PRD-200 CC-2, FRED https://fred.stlouisfed.org/
+Refs: PRD-200 CC-2b, DEC-001, FRED https://fred.stlouisfed.org/
 """
 
 from __future__ import annotations
@@ -29,8 +29,8 @@ from fredapi import Fred
 DEFAULT_START_DATE = datetime(2015, 1, 1)
 DEFAULT_OUTPUT_PATH = Path("data/market_pricing/us_rates.parquet")
 
-FRED_SERIES_NOMINAL = "DGS2"
-FRED_SERIES_BREAKEVEN = "T5YIE"
+FRED_SERIES_NOMINAL = "DGS5"
+FRED_SERIES_REAL = "DFII5"
 
 
 def _get_fred_client() -> Fred:
@@ -54,7 +54,7 @@ def fetch_us_rates(
     end: Optional[datetime] = None,
     client: Optional[Fred] = None,
 ) -> pd.DataFrame:
-    """Descarcă US 2Y nominal și real yields din FRED.
+    """Descarcă US 5Y nominal și real yields din FRED.
 
     Args:
         start: Data de început (default 2015-01-01)
@@ -62,7 +62,7 @@ def fetch_us_rates(
         client: Client FRED opțional (pentru testing cu mock)
 
     Returns:
-        DataFrame cu coloanele: date, us_2y_nominal, us_2y_real, us_breakeven_implied
+        DataFrame cu coloanele: date, us_5y_nominal, us_5y_real, us_breakeven_implied
         Frecvență zilnică (business days), sortat ascending pe dată.
 
     Raises:
@@ -76,30 +76,30 @@ def fetch_us_rates(
         observation_start=start,
         observation_end=end,
     )
-    breakeven = client.get_series(
-        FRED_SERIES_BREAKEVEN,
+    real = client.get_series(
+        FRED_SERIES_REAL,
         observation_start=start,
         observation_end=end,
     )
 
     if nominal.empty:
         raise ValueError(f"FRED series {FRED_SERIES_NOMINAL} returned empty")
-    if breakeven.empty:
-        raise ValueError(f"FRED series {FRED_SERIES_BREAKEVEN} returned empty")
+    if real.empty:
+        raise ValueError(f"FRED series {FRED_SERIES_REAL} returned empty")
 
     df = pd.DataFrame({
-        "us_2y_nominal": nominal,
-        "us_breakeven_implied": breakeven,
+        "us_5y_nominal": nominal,
+        "us_5y_real": real,
     })
     df.index.name = "date"
     df = df.reset_index()
     df["date"] = pd.to_datetime(df["date"])
 
-    # Real yield implicit = nominal - breakeven
-    df["us_2y_real"] = df["us_2y_nominal"] - df["us_breakeven_implied"]
+    # Breakeven inflation implicit = nominal - real
+    df["us_breakeven_implied"] = df["us_5y_nominal"] - df["us_5y_real"]
 
     # Drop rânduri unde ambele sunt NaN
-    df = df.dropna(subset=["us_2y_nominal", "us_breakeven_implied"], how="all")
+    df = df.dropna(subset=["us_5y_nominal", "us_5y_real"], how="all")
     df = df.sort_values("date").reset_index(drop=True)
 
     return df
@@ -118,7 +118,7 @@ def save_us_rates(
     Returns:
         Path-ul fișierului scris
     """
-    required_cols = {"date", "us_2y_nominal", "us_2y_real", "us_breakeven_implied"}
+    required_cols = {"date", "us_5y_nominal", "us_5y_real", "us_breakeven_implied"}
     missing = required_cols - set(df.columns)
     if missing:
         raise ValueError(f"DataFrame-ul lipsește coloanele: {missing}")
