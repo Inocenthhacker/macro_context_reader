@@ -65,15 +65,19 @@ class InflationExpectationRow(BaseModel):
 
 
 class USRatesRow(BaseModel):
-    """Un singur rând de rate US."""
+    """Un singur rând de rate US — orizont 5Y.
+
+    Vezi decisions/DEC-001-switch-to-5y-horizon.md pentru motivul
+    schimbării de la 2Y la 5Y.
+    """
 
     model_config = ConfigDict(frozen=True)
 
     date: datetime
-    us_2y_nominal: float
-    us_2y_real: float
+    us_5y_nominal: float
+    us_5y_real: float
     us_breakeven_implied: float = Field(
-        ..., description="Calculat ca us_2y_nominal - us_2y_real"
+        ..., description="Calculat ca us_5y_nominal - us_5y_real"
     )
 
 
@@ -83,8 +87,8 @@ class EURRatesRow(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     date: datetime
-    eu_2y_nominal: float = Field(
-        ..., description="ECB govt yield 2Y, proxy pentru OIS (spread <15bp)"
+    eu_5y_nominal: float = Field(
+        ..., description="ECB govt yield 5Y, proxy pentru OIS (spread <15bp)"
     )
 
 
@@ -103,12 +107,12 @@ class RealRateDiffRow(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     date: datetime
-    us_2y_real: float
-    eu_2y_real: float = Field(
-        ..., description="Calculat ca eu_2y_nominal - eur_inflation_expectation"
+    us_5y_real: float
+    eu_5y_real: float = Field(
+        ..., description="Calculat ca eu_5y_nominal - eur_inflation_expectation"
     )
     real_rate_diff: float = Field(
-        ..., description="us_2y_real - eu_2y_real, în procente"
+        ..., description="us_5y_real - eu_5y_real, în procente"
     )
     eurusd: Optional[float] = None
     methodology_confidence: AccuracyTier
