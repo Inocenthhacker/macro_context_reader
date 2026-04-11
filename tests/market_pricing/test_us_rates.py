@@ -13,6 +13,7 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
+from dotenv import load_dotenv
 from pydantic import ValidationError
 
 from macro_context_reader.market_pricing.us_rates import (
@@ -147,6 +148,7 @@ def test_pydantic_validation_catches_invalid_row():
 def test_fetch_real_fred_data():
     """Integration: fetch real din FRED, validare range-uri plauzibile."""
     import os
+    load_dotenv()  # ensure .env is loaded regardless of test execution order
     if not os.getenv("FRED_API_KEY"):
         pytest.skip("FRED_API_KEY not set")
 

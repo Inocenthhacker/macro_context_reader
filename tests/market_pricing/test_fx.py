@@ -14,6 +14,7 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
+from dotenv import load_dotenv
 from pydantic import ValidationError
 
 from macro_context_reader.market_pricing.fx import (
@@ -214,6 +215,7 @@ def test_save_missing_columns_raises(tmp_path):
 @pytest.mark.integration
 def test_fetch_fx_eurusd_integration():
     """Integration: fetch real din FRED, range istoric plauzibil."""
+    load_dotenv()  # ensure .env is loaded regardless of test execution order
     if not os.getenv("FRED_API_KEY"):
         pytest.skip("FRED_API_KEY not set")
 
