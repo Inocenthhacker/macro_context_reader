@@ -79,3 +79,15 @@ Thumbs.db
 *.tmp
 *.bak
 *~
+
+# Local test outputs (CC-8 setup artifacts)
+setup_test_output.txt
+setup_integration_output.txt
+integration_after_patch*.txt
+unit_after_patch*.txt
+
+# Claude Code local harness
+.claude/
+
+# Ad-hoc sanity check scripts
+_sanity_check.py
