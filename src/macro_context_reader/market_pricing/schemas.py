@@ -200,12 +200,27 @@ class RealRateDifferentialRow(BaseModel):
 
 
 class FXRow(BaseModel):
-    """Un singur rând de FX."""
+    """Un singur rând de FX (EUR/USD spot).
+
+    Sursa: FRED DEXUSEU — daily noon buying rates in NY, business days.
+    Serie publicată de Board of Governors of the Federal Reserve System.
+
+    Refs: PRD-200 CC-8, REQ-4
+    """
 
     model_config = ConfigDict(frozen=True)
 
     date: datetime
-    eurusd: float = Field(..., gt=0, description="EUR/USD exchange rate")
+    eurusd: float = Field(
+        ...,
+        description="EUR/USD spot exchange rate (FRED DEXUSEU, daily)",
+    )
+
+    @model_validator(mode="after")
+    def _reject_nan(self) -> FXRow:
+        if math.isnan(self.eurusd):
+            raise ValueError("eurusd must not be NaN")
+        return self
 
 
 class RealRateDiffRow(BaseModel):
