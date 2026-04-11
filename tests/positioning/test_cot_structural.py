@@ -178,3 +178,168 @@ def test_fetch_real_cftc_integration() -> None:
 
     # Lev positions plausibility for EUR futures
     assert signals["lev_net"].abs().max() < 500_000  # CFTC EUR rarely exceeds this
+
+
+# === PRD-400/CC-2: temporal/dtype invariants + reproducibility ===
+
+
+@pytest.mark.integration
+def test_parquet_invariant_no_temporal_gaps() -> None:
+    """AC-4: cot_eur.parquet has no gap > 14 days between consecutive rows.
+
+    CFTC publishes weekly (Tuesday positions, Friday release). Maximum
+    expected gap between consecutive observations is ~7 days. A gap > 14 days
+    indicates either missing data or pipeline contamination.
+    """
+    from pathlib import Path
+
+    parquet_path = Path("data/positioning/cot_eur.parquet")
+    if not parquet_path.exists():
+        pytest.skip(f"{parquet_path} not found — run pipeline first")
+
+    df = pd.read_parquet(parquet_path).sort_values("date").reset_index(drop=True)
+
+    gaps = df["date"].diff().dt.days
+    max_gap = gaps.max()
+
+    # Find which dates have problematic gaps
+    problem_idx = gaps[gaps > 14].index.tolist()
+    problem_details = [
+        f"  {df.loc[i - 1, 'date'].date()} -> {df.loc[i, 'date'].date()} ({int(gaps[i])} days)"
+        for i in problem_idx
+    ]
+
+    assert max_gap <= 14, (
+        f"Maximum gap is {max_gap} days, expected <= 14.\n"
+        f"Problematic transitions:\n" + "\n".join(problem_details)
+    )
+
+
+@pytest.mark.integration
+def test_parquet_dtypes_strict() -> None:
+    """All columns in cot_eur.parquet have the expected dtype."""
+    from pathlib import Path
+
+    parquet_path = Path("data/positioning/cot_eur.parquet")
+    if not parquet_path.exists():
+        pytest.skip(f"{parquet_path} not found — run pipeline first")
+
+    df = pd.read_parquet(parquet_path)
+
+    expected_dtypes = {
+        "date": "datetime64[ns]",
+        "lev_net": "int64",
+        "am_net": "int64",
+        "lev_delta_wow": "float64",
+        "lev_percentile_52w": "float64",
+    }
+
+    actual_dtypes = {col: str(df[col].dtype) for col in df.columns}
+
+    for col, expected in expected_dtypes.items():
+        assert col in df.columns, f"Missing column: {col}"
+        assert actual_dtypes[col] == expected, (
+            f"Column {col!r}: expected dtype {expected!r}, got {actual_dtypes[col]!r}"
+        )
+
+    # No unexpected columns
+    unexpected = set(df.columns) - set(expected_dtypes.keys())
+    assert not unexpected, f"Unexpected columns in parquet: {unexpected}"
+
+
+@pytest.mark.integration
+def test_parquet_temporal_range_minimum() -> None:
+    """cot_eur.parquet covers at least 2018-01-01 → present minus 30 days."""
+    from datetime import datetime, timedelta
+    from pathlib import Path
+
+    parquet_path = Path("data/positioning/cot_eur.parquet")
+    if not parquet_path.exists():
+        pytest.skip(f"{parquet_path} not found — run pipeline first")
+
+    df = pd.read_parquet(parquet_path)
+
+    min_date = df["date"].min()
+    max_date = df["date"].max()
+
+    # Lower bound: must start in early 2018
+    assert min_date <= pd.Timestamp("2018-02-01"), (
+        f"Earliest date is {min_date.date()}, expected <= 2018-02-01"
+    )
+
+    # Upper bound: must extend to within 30 days of present
+    # (CFTC releases Friday, plus 3-day Tue position lag, plus weekend tolerance)
+    cutoff = pd.Timestamp(datetime.now() - timedelta(days=30))
+    assert max_date >= cutoff, (
+        f"Latest date is {max_date.date()}, expected >= {cutoff.date()} "
+        f"(parquet may be stale — run pipeline to refresh)"
+    )
+
+
+@pytest.mark.integration
+def test_parquet_nan_distribution_expected() -> None:
+    """NaN distribution matches expected pattern from compute_cot_signals.
+
+    - lev_net, am_net, date: zero NaN (raw computed values)
+    - lev_delta_wow: exactly 1 NaN (first row, no previous to diff against)
+    - lev_percentile_52w: exactly 51 NaN (rolling(52) burn-in)
+    """
+    from pathlib import Path
+
+    parquet_path = Path("data/positioning/cot_eur.parquet")
+    if not parquet_path.exists():
+        pytest.skip(f"{parquet_path} not found — run pipeline first")
+
+    df = pd.read_parquet(parquet_path).sort_values("date").reset_index(drop=True)
+
+    nan_counts = df.isna().sum().to_dict()
+
+    assert nan_counts["date"] == 0, f"date has {nan_counts['date']} NaN, expected 0"
+    assert nan_counts["lev_net"] == 0, f"lev_net has {nan_counts['lev_net']} NaN, expected 0"
+    assert nan_counts["am_net"] == 0, f"am_net has {nan_counts['am_net']} NaN, expected 0"
+
+    # lev_delta_wow: exactly 1 NaN at first row
+    assert nan_counts["lev_delta_wow"] == 1, (
+        f"lev_delta_wow has {nan_counts['lev_delta_wow']} NaN, expected exactly 1 (first row)"
+    )
+    assert pd.isna(df.loc[0, "lev_delta_wow"]), "First row of lev_delta_wow should be NaN"
+
+    # lev_percentile_52w: exactly 51 NaN at burn-in
+    assert nan_counts["lev_percentile_52w"] == 51, (
+        f"lev_percentile_52w has {nan_counts['lev_percentile_52w']} NaN, expected exactly 51 "
+        f"(rolling(52) burn-in)"
+    )
+    # First 51 rows should be NaN, row 52 onwards should be populated
+    assert df.loc[:50, "lev_percentile_52w"].isna().all(), "First 51 rows should be NaN"
+    assert df.loc[51:, "lev_percentile_52w"].notna().all(), "Rows 52+ should be populated"
+
+
+@pytest.mark.integration
+def test_pipeline_reproducibility(tmp_path) -> None:
+    """NFR-2: running fetch + compute twice produces identical DataFrames.
+
+    Tests that fetch + compute + save are deterministic — no random ordering,
+    no injected timestamps, no race conditions in concat/merge operations.
+
+    Adaptation vs spec: run_cot_pipeline signature does not accept output_path,
+    so we wire fetch_cot_eur → compute_cot_signals → save_cot_parquet manually
+    with two distinct tmp_path destinations. This exercises the same code path
+    as run_cot_pipeline (which is a thin orchestrator) without touching source.
+    """
+    raw1 = fetch_cot_eur(start_year=2023, end_year=2023)
+    signals1 = compute_cot_signals(raw1)
+    path1 = tmp_path / "run1.parquet"
+    save_cot_parquet(signals1, path=str(path1))
+
+    raw2 = fetch_cot_eur(start_year=2023, end_year=2023)
+    signals2 = compute_cot_signals(raw2)
+    path2 = tmp_path / "run2.parquet"
+    save_cot_parquet(signals2, path=str(path2))
+
+    # Returned DataFrames must be identical
+    pd.testing.assert_frame_equal(signals1, signals2, check_exact=True)
+
+    # Re-loaded parquets must be identical
+    loaded1 = pd.read_parquet(path1)
+    loaded2 = pd.read_parquet(path2)
+    pd.testing.assert_frame_equal(loaded1, loaded2, check_exact=True)
