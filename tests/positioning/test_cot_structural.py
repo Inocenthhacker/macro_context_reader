@@ -79,7 +79,7 @@ def test_save_parquet() -> None:
 def test_fetch_skips_on_error() -> None:
     good_data = pd.DataFrame(
         {
-            "Market_and_Exchange_Names": ["EURO FX - CME"] * 5,
+            "Market_and_Exchange_Names": ["EURO FX - CHICAGO MERCANTILE EXCHANGE"] * 5,
             "As_of_Date_In_Form_YYMMDD": ["230103", "230110", "230117", "230124", "230131"],
             "Lev_Money_Positions_Long_All": [100] * 5,
             "Lev_Money_Positions_Short_All": [50] * 5,
@@ -96,3 +96,85 @@ def test_fetch_skips_on_error() -> None:
     with patch("macro_context_reader.positioning.cot_structural.cot_year", side_effect=side_effect):
         result = fetch_cot_eur(start_year=2023, end_year=2024)
         assert len(result) == 5
+
+
+# === PRD-400/CC-1: regression + invariant + integration tests ===
+
+
+def test_filter_rejects_multi_contract_pollution(monkeypatch) -> None:
+    """Regression test for the bug fixed in PRD-400/CC-1.
+
+    Original code used str.contains('EURO FX') which matched 3 distinct
+    CFTC contracts. This test ensures exact match filter is in place.
+    """
+    raw = pd.DataFrame(
+        {
+            "Market_and_Exchange_Names": [
+                "EURO FX - CHICAGO MERCANTILE EXCHANGE",  # WANTED
+                "EURO FX CROSS RATES - CHICAGO MERCANTILE EXCHANGE",  # NOISE
+                "EURO FX/BRITISH POUND XRATE - CHICAGO MERCANTILE EXCHANGE",  # NOISE
+            ],
+            "As_of_Date_In_Form_YYMMDD": ["240102", "240102", "240102"],
+            "Lev_Money_Positions_Long_All": [100000, 5000, 200],
+            "Lev_Money_Positions_Short_All": [50000, 3000, 100],
+            "Asset_Mgr_Positions_Long_All": [80000, 4000, 150],
+            "Asset_Mgr_Positions_Short_All": [40000, 2000, 80],
+        }
+    )
+
+    def fake_cot_year(year, **kwargs):
+        return raw
+
+    monkeypatch.setattr(
+        "macro_context_reader.positioning.cot_structural.cot_year", fake_cot_year
+    )
+
+    result = fetch_cot_eur(start_year=2024, end_year=2024)
+
+    # CRITICAL ASSERTION: only the wanted contract survived the filter
+    assert len(result) == 1, f"Filter should return 1 row, got {len(result)}"
+    assert (
+        result["Market_and_Exchange_Names"].iloc[0]
+        == "EURO FX - CHICAGO MERCANTILE EXCHANGE"
+    )
+
+
+def test_compute_signals_invariant_one_row_per_date(synthetic_tff: pd.DataFrame) -> None:
+    """Invariant: 1 row per unique date in compute_cot_signals output."""
+    result = compute_cot_signals(synthetic_tff)
+    assert result["date"].nunique() == len(result), (
+        f"Expected 1 row per date, got {len(result)} rows for "
+        f"{result['date'].nunique()} unique dates"
+    )
+
+
+def test_compute_signals_pydantic_validation(synthetic_tff: pd.DataFrame) -> None:
+    """compute_cot_signals must call _validate_rows internally without raising."""
+    result = compute_cot_signals(synthetic_tff)
+    assert len(result) > 0
+
+
+@pytest.mark.integration
+def test_fetch_real_cftc_integration() -> None:
+    """Integration test: fetch real CFTC data and verify invariants."""
+    raw = fetch_cot_eur(start_year=2023, end_year=2024)
+    assert len(raw) > 0, "Real CFTC fetch returned empty"
+
+    # Filter sanity: only the standard EUR contract
+    unique_markets = raw["Market_and_Exchange_Names"].unique()
+    assert len(unique_markets) == 1, (
+        f"Expected 1 market name, got {len(unique_markets)}: {unique_markets}"
+    )
+    assert unique_markets[0] == "EURO FX - CHICAGO MERCANTILE EXCHANGE"
+
+    signals = compute_cot_signals(raw)
+
+    # Invariant check
+    assert signals["date"].nunique() == len(signals)
+
+    # Range check
+    assert signals["date"].min() >= pd.Timestamp("2023-01-01")
+    assert signals["date"].max() <= pd.Timestamp("2025-01-01")
+
+    # Lev positions plausibility for EUR futures
+    assert signals["lev_net"].abs().max() < 500_000  # CFTC EUR rarely exceeds this
