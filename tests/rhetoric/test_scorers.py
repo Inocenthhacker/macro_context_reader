@@ -136,6 +136,47 @@ class TestFinBERTFOMC:
 HAWKISH_SENTENCE = "The Committee will continue raising rates to combat inflation."
 
 
+class TestSoftmaxPrecision:
+    def test_no_pydantic_error_on_edge_probs(self) -> None:
+        """Regression: softmax output ~1.0000001 must not break Pydantic validation."""
+        # Simulate what happens after np.clip + normalize
+        import numpy as np
+        raw = np.array([1.0000001, -0.0000001, 0.0])
+        clamped = np.clip(raw, 0.0, 1.0)
+        normalized = clamped / clamped.sum()
+
+        # This must not raise ValidationError
+        score = SentenceScore(
+            sentence="test",
+            sentence_idx=0,
+            score_hawkish=float(normalized[0]),
+            score_dovish=float(normalized[1]),
+            score_neutral=float(normalized[2]),
+            label="hawkish",
+            confidence=float(normalized[0]),
+        )
+        assert score.score_hawkish <= 1.0
+        assert score.score_dovish >= 0.0
+
+    def test_all_zero_logits_safe(self) -> None:
+        """Edge case: all-zero logits produce uniform 1/3 after softmax."""
+        import numpy as np
+        raw = np.array([0.333333, 0.333333, 0.333334])
+        clamped = np.clip(raw, 0.0, 1.0)
+        normalized = clamped / clamped.sum()
+
+        score = SentenceScore(
+            sentence="test",
+            sentence_idx=0,
+            score_hawkish=float(normalized[0]),
+            score_dovish=float(normalized[1]),
+            score_neutral=float(normalized[2]),
+            label="neutral",
+            confidence=float(normalized[2]),
+        )
+        assert abs(score.score_hawkish + score.score_dovish + score.score_neutral - 1.0) < 1e-6
+
+
 @pytest.mark.integration
 @needs_torch
 def test_fomc_roberta_real_inference() -> None:
