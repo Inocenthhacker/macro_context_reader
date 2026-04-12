@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
+import numpy as np
 import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
@@ -63,6 +64,9 @@ class FOMCRobertaScorer:
                 probs = torch.softmax(logits, dim=-1).cpu().numpy()
 
             for i, (sent, prob) in enumerate(zip(batch, probs)):
+                # Clamp for floating-point precision safety (softmax can yield ~1.0000001)
+                prob = np.clip(prob, 0.0, 1.0)
+                prob = prob / prob.sum()
                 label_idx = int(prob.argmax())
                 results.append(SentenceScore(
                     sentence=sent,
