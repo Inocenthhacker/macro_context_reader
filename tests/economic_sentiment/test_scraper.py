@@ -1,4 +1,4 @@
-"""Tests for Beige Book scraper — PRD-102 CC-1, CC-1-FIX2, CC-1-FIX3, CC-1-FIX4."""
+"""Tests for Beige Book scraper — PRD-102 CC-1, CC-1-FIX2, CC-1-FIX3, CC-1-FIX4, CC-1-FIX5, CC-1-FIX6."""
 
 from __future__ import annotations
 
@@ -18,10 +18,13 @@ from macro_context_reader.economic_sentiment.scraper import (
     _split_pdf_into_sections,
     _summary_url,
     _write_cache,
+    detect_url_scheme,
     extract_beige_book_content,
+    parse_monolithic_beige_book,
     ALL_DISTRICTS,
     DISTRICT_HEADER_PATTERN,
     DISTRICT_URL_SLUGS,
+    MIN_SUPPORTED_YEAR,
 )
 
 
@@ -303,6 +306,120 @@ class TestClearCache:
 
 
 # ---------------------------------------------------------------------------
+# Monolithic Beige Book parsing (2017-2023 era)
+# ---------------------------------------------------------------------------
+
+class TestParseMonolithicBeigeBook:
+    @staticmethod
+    def _make_monolithic_html(districts: list[str] | None = None) -> str:
+        """Build a synthetic monolithic Beige Book HTML page."""
+        if districts is None:
+            districts = list(ALL_DISTRICTS)
+        paras = "".join(
+            f"<p>{'Economic activity expanded moderately across all districts. ' * 5}</p>"
+            for _ in range(3)
+        )
+        national = f"<h3>Summary of Commentary on Current Economic Conditions</h3>{paras}"
+        district_sections = ""
+        for d in districts:
+            district_text = "".join(
+                f"<p>The {d} district reported moderate growth in activity. "
+                f"Manufacturing expanded and employment rose steadily. "
+                f"Consumer spending remained solid throughout the period.</p>"
+                for _ in range(3)
+            )
+            district_sections += f"<h3>{d}</h3>{district_text}"
+        return f'<html><body><div id="article">{national}{district_sections}</div></body></html>'
+
+    def test_extracts_all_12_districts(self) -> None:
+        html = self._make_monolithic_html()
+        sections = parse_monolithic_beige_book(html)
+        assert "national_summary" in sections
+        for district in ALL_DISTRICTS:
+            assert district in sections, f"Missing district: {district}"
+            assert len(sections[district]) > 100
+
+    def test_national_summary_before_first_district(self) -> None:
+        html = self._make_monolithic_html()
+        sections = parse_monolithic_beige_book(html)
+        assert "Economic activity" in sections["national_summary"]
+
+    def test_fails_on_too_few_districts(self) -> None:
+        html = self._make_monolithic_html(districts=["Boston", "New York"])
+        with pytest.raises(ValueError, match="districts extracted"):
+            parse_monolithic_beige_book(html)
+
+    def test_fails_on_no_content_div(self) -> None:
+        html = "<html><body><p>no article div</p></body></html>"
+        with pytest.raises(ValueError, match="Cannot locate"):
+            parse_monolithic_beige_book(html)
+
+    def test_handles_federal_reserve_bank_of_prefix(self) -> None:
+        """Headers like 'Federal Reserve Bank of Boston' should also match."""
+        paras = "".join(
+            f"<p>{'Economic activity expanded moderately across all districts. ' * 5}</p>"
+            for _ in range(3)
+        )
+        national = f"<h3>Summary</h3>{paras}"
+        district_sections = ""
+        for d in ALL_DISTRICTS:
+            district_text = "".join(
+                f"<p>The {d} district reported moderate growth over the period. "
+                f"Manufacturing sector expanded and employment rose steadily. "
+                f"Consumer spending remained solid throughout the reporting period.</p>"
+                for _ in range(3)
+            )
+            district_sections += f"<h3>Federal Reserve Bank of {d}</h3>{district_text}"
+        html = f'<html><body><div id="article">{national}{district_sections}</div></body></html>'
+        sections = parse_monolithic_beige_book(html)
+        for district in ALL_DISTRICTS:
+            assert district in sections, f"Missing: {district}"
+
+
+# ---------------------------------------------------------------------------
+# MIN_SUPPORTED_YEAR enforcement
+# ---------------------------------------------------------------------------
+
+class TestMinSupportedYear:
+    def test_min_supported_year_is_2017(self) -> None:
+        assert MIN_SUPPORTED_YEAR == 2017
+
+    def test_discover_publications_rejects_pre_2017(self) -> None:
+        from macro_context_reader.economic_sentiment.scraper import (
+            _get_session, discover_publications,
+        )
+        session = _get_session()
+        with pytest.raises(RuntimeError, match="MIN_SUPPORTED_YEAR"):
+            discover_publications(session, start_year=2016)
+
+    def test_discover_publications_rejects_2011(self) -> None:
+        from macro_context_reader.economic_sentiment.scraper import (
+            _get_session, discover_publications,
+        )
+        session = _get_session()
+        with pytest.raises(RuntimeError, match="MIN_SUPPORTED_YEAR"):
+            discover_publications(session, start_year=2011)
+
+    def test_discover_publications_accepts_2017(self) -> None:
+        """2017 should not raise (boundary value)."""
+        from macro_context_reader.economic_sentiment.scraper import discover_publications
+        # Just verify it doesn't raise — actual network call skipped via mock
+        from unittest.mock import patch
+        with patch(
+            "macro_context_reader.economic_sentiment.scraper._request_with_retry",
+            side_effect=Exception("mocked — skip network"),
+        ):
+            # Should not raise RuntimeError for start_year validation
+            # Will fail on network, but that's fine — we're testing the guard
+            try:
+                discover_publications(MagicMock(), start_year=2017)
+            except RuntimeError as e:
+                if "MIN_SUPPORTED_YEAR" in str(e):
+                    raise  # re-raise if it's the year guard — that's a bug
+                # Other RuntimeErrors (network) are expected
+
+
+# ---------------------------------------------------------------------------
 # Integration tests — require network access
 # ---------------------------------------------------------------------------
 
@@ -332,6 +449,21 @@ def test_discovery_covers_2020() -> None:
 
 
 @pytest.mark.integration
+def test_discovery_2017_onwards_real_fed_archive() -> None:
+    """Live test: 2017 should have exactly 8 publications from real Fed archive."""
+    from macro_context_reader.economic_sentiment.scraper import (
+        _get_session, discover_publications,
+    )
+    session = _get_session()
+    pubs = discover_publications(session, start_year=2017, end_date=datetime(2017, 12, 31))
+    pubs_2017 = [p for p in pubs if p["publication_date"].year == 2017]
+    assert len(pubs_2017) == 8, (
+        f"2017 should have 8 publications, got {len(pubs_2017)}: "
+        f"{[p['yyyy_nn'] for p in pubs_2017]}"
+    )
+
+
+@pytest.mark.integration
 def test_all_district_urls_valid_empirically() -> None:
     """Validate all 12 district slugs by HEAD request.
 
@@ -354,3 +486,42 @@ def test_national_summary_url_valid_empirically() -> None:
     url = _summary_url("202601")
     resp = req.head(url, timeout=10, allow_redirects=True)
     assert resp.status_code == 200, f"Summary URL returned {resp.status_code}: {url}"
+
+
+@pytest.mark.integration
+def test_detect_url_scheme_2024_is_fragmented() -> None:
+    """Empirical: 2024 publications use fragmented URL scheme."""
+    from macro_context_reader.economic_sentiment.scraper import _get_session
+    session = _get_session()
+    scheme = detect_url_scheme("202401", session)
+    assert scheme == "fragmented", f"Expected fragmented for 202401, got {scheme}"
+
+
+@pytest.mark.integration
+def test_detect_url_scheme_2019_is_monolithic() -> None:
+    """Empirical: 2019 publications use monolithic URL scheme."""
+    from macro_context_reader.economic_sentiment.scraper import _get_session
+    session = _get_session()
+    scheme = detect_url_scheme("201901", session)
+    assert scheme == "monolithic", f"Expected monolithic for 201901, got {scheme}"
+
+
+@pytest.mark.integration
+def test_parse_monolithic_extracts_all_districts_real_2019() -> None:
+    """Integration: fetch real 2019-01 Beige Book and verify all 12 districts parsed."""
+    import requests as req
+    url = "https://www.federalreserve.gov/monetarypolicy/beigebook201901.htm"
+    resp = req.get(url, timeout=30, headers={"User-Agent": "MacroContextReader/1.0"})
+    resp.raise_for_status()
+    sections = parse_monolithic_beige_book(resp.text)
+
+    assert "national_summary" in sections
+    assert len(sections["national_summary"]) > 500, (
+        f"National summary too short: {len(sections['national_summary'])} chars"
+    )
+
+    for district in ALL_DISTRICTS:
+        assert district in sections, f"Missing district: {district}"
+        assert len(sections[district]) > 200, (
+            f"District {district} text too short: {len(sections[district])} chars"
+        )

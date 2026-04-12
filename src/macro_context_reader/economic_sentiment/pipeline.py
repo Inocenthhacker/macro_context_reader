@@ -32,7 +32,10 @@ from macro_context_reader.economic_sentiment.schemas import (
 from macro_context_reader.economic_sentiment.scorers.finbert_sentiment import (
     FinBERTSentimentScorer,
 )
-from macro_context_reader.economic_sentiment.scraper import fetch_all_beige_books
+from macro_context_reader.economic_sentiment.scraper import (
+    MIN_SUPPORTED_YEAR,
+    fetch_all_beige_books,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +43,7 @@ DEFAULT_OUTPUT_PATH = Path("data/economic_sentiment/beige_book_sentiment.parquet
 
 
 def run_full_pipeline(
-    start_year: int = 1970,
+    start_year: int = MIN_SUPPORTED_YEAR,
     end_date: datetime | None = None,
     force_refetch: bool = False,
     output_path: Path = DEFAULT_OUTPUT_PATH,
@@ -55,7 +58,7 @@ def run_full_pipeline(
       5. Output DataFrame + Parquet
 
     Args:
-        start_year: Earliest year (default: 1970 for full backfill).
+        start_year: Earliest year (default: 2017, enforced by MIN_SUPPORTED_YEAR).
         end_date: Latest date (default: now).
         force_refetch: If True, re-scrape even if cached.
         output_path: Path for output Parquet.
