@@ -13,13 +13,13 @@
 
 | Test File | Test Name | Result |
 |---|---|---|
-| `test_cot_structural.py` | test_compute_cot_signals_columns | PASSED |
-| `test_cot_structural.py` | test_lev_net_calculation | PASSED |
-| `test_cot_structural.py` | test_lev_percentile_range | PASSED |
-| `test_cot_structural.py` | test_date_dtype | PASSED |
-| `test_cot_structural.py` | test_sorted_ascending | PASSED |
-| `test_cot_structural.py` | test_save_parquet | PASSED |
-| `test_cot_structural.py` | test_fetch_skips_on_error | PASSED |
+| `test_cot_leveraged_funds.py` | test_compute_cot_signals_columns | PASSED |
+| `test_cot_leveraged_funds.py` | test_lev_net_calculation | PASSED |
+| `test_cot_leveraged_funds.py` | test_lev_percentile_range | PASSED |
+| `test_cot_leveraged_funds.py` | test_date_dtype | PASSED |
+| `test_cot_leveraged_funds.py` | test_sorted_ascending | PASSED |
+| `test_cot_leveraged_funds.py` | test_save_parquet | PASSED |
+| `test_cot_leveraged_funds.py` | test_fetch_skips_on_error | PASSED |
 | `test_tactical_positioning.py` | test_tactical_score_range | PASSED |
 | `test_tactical_positioning.py` | test_graceful_degradation_one_source_missing | PASSED |
 | `test_tactical_positioning.py` | test_graceful_degradation_two_sources_missing | PASSED |
@@ -99,7 +99,7 @@ Classification method: Python `ast` module. Files with < 20 lines excluded.
 | `output/combination_rules/pcr5.py` | 36 | 0 | 1 | 0 | SKELETON |
 | `output/combination_rules/yager.py` | 24 | 0 | 1 | 0 | SKELETON |
 | `output/position_sizing.py` | 30 | 0 | 1 | 0 | SKELETON |
-| `positioning/cot_structural.py` | 75 | 42 | 0 | 0 | COMPLETE |
+| `positioning/cot_leveraged_funds.py` | 75 | 42 | 0 | 0 | COMPLETE |
 | `positioning/oi_signal.py` | 62 | 26 | 0 | 0 | COMPLETE |
 | `positioning/options_signal.py` | 59 | 26 | 0 | 0 | COMPLETE |
 | `positioning/retail_signal.py` | 53 | 22 | 0 | 0 | COMPLETE |

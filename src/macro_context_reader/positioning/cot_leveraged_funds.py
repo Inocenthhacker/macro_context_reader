@@ -1,4 +1,4 @@
-"""COT structural positioning pipeline — Layer 4A.
+"""COT leveraged funds positioning pipeline — Layer 4A.
 
 Refs: PRD-400 CC-1
 """

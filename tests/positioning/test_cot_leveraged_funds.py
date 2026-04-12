@@ -1,11 +1,11 @@
-"""Tests for COT structural positioning pipeline (Layer 4A)."""
+"""Tests for COT leveraged funds positioning pipeline (Layer 4A)."""
 
 from unittest.mock import patch, MagicMock
 
 import pandas as pd
 import pytest
 
-from macro_context_reader.positioning.cot_structural import (
+from macro_context_reader.positioning.cot_leveraged_funds import (
     compute_cot_signals,
     fetch_cot_eur,
     save_cot_parquet,
@@ -67,7 +67,7 @@ def test_sorted_ascending(signals: pd.DataFrame) -> None:
 def test_save_parquet() -> None:
     df = pd.DataFrame({"date": [pd.Timestamp("2024-01-01")], "lev_net": [100]})
     with patch.object(pd.DataFrame, "to_parquet") as mock_parquet, \
-         patch("macro_context_reader.positioning.cot_structural.Path") as mock_path_cls:
+         patch("macro_context_reader.positioning.cot_leveraged_funds.Path") as mock_path_cls:
         mock_path_inst = MagicMock()
         mock_path_cls.return_value = mock_path_inst
         save_cot_parquet(df, path="data/positioning/cot_eur.parquet")
@@ -93,7 +93,7 @@ def test_fetch_skips_on_error() -> None:
             raise RuntimeError("Simulated failure")
         return good_data
 
-    with patch("macro_context_reader.positioning.cot_structural.cot_year", side_effect=side_effect):
+    with patch("macro_context_reader.positioning.cot_leveraged_funds.cot_year", side_effect=side_effect):
         result = fetch_cot_eur(start_year=2023, end_year=2024)
         assert len(result) == 5
 
@@ -126,7 +126,7 @@ def test_filter_rejects_multi_contract_pollution(monkeypatch) -> None:
         return raw
 
     monkeypatch.setattr(
-        "macro_context_reader.positioning.cot_structural.cot_year", fake_cot_year
+        "macro_context_reader.positioning.cot_leveraged_funds.cot_year", fake_cot_year
     )
 
     result = fetch_cot_eur(start_year=2024, end_year=2024)
