@@ -63,6 +63,8 @@ data/market_pricing/inflation_expectations/*.parquet
 data/regime/*.parquet
 data/regime/*.pkl
 data/regime/*.npy
+data/economic_sentiment/raw/
+data/economic_sentiment/*.parquet
 data/rhetoric/raw/
 data/rhetoric/llama_cache/
 data/rhetoric/*.parquet
