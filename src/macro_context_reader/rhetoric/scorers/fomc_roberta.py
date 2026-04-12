@@ -64,16 +64,20 @@ class FOMCRobertaScorer:
                 probs = torch.softmax(logits, dim=-1).cpu().numpy()
 
             for i, (sent, prob) in enumerate(zip(batch, probs)):
-                # Clamp for floating-point precision safety (softmax can yield ~1.0000001)
-                prob = np.clip(prob, 0.0, 1.0)
+                # Normalize first, then clip for floating-point precision safety
                 prob = prob / prob.sum()
+                prob = np.clip(prob, 0.0, 1.0)
+                h, d, n = float(prob[0]), float(prob[1]), float(prob[2])
+                assert 0.0 <= h <= 1.0, f"h out of range: {h}"
+                assert 0.0 <= d <= 1.0, f"d out of range: {d}"
+                assert 0.0 <= n <= 1.0, f"n out of range: {n}"
                 label_idx = int(prob.argmax())
                 results.append(SentenceScore(
                     sentence=sent,
                     sentence_idx=start + i,
-                    score_hawkish=float(prob[0]),
-                    score_dovish=float(prob[1]),
-                    score_neutral=float(prob[2]),
+                    score_hawkish=h,
+                    score_dovish=d,
+                    score_neutral=n,
                     label=LABEL_MAP[label_idx],
                     confidence=float(prob[label_idx]),
                 ))

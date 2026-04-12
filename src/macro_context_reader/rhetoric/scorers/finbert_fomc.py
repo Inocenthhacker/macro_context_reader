@@ -89,12 +89,15 @@ class FinBERTFOMCScorer:
                 probs = torch.softmax(logits, dim=-1).cpu().numpy()
 
             for i, (sent, prob) in enumerate(zip(batch, probs)):
-                # Clamp for floating-point precision safety
-                prob = np.clip(prob, 0.0, 1.0)
+                # Normalize first, then clip for floating-point precision safety
                 prob = prob / prob.sum()
+                prob = np.clip(prob, 0.0, 1.0)
                 h = self._prob_for_label(prob, "hawkish")
                 d = self._prob_for_label(prob, "dovish")
                 n = self._prob_for_label(prob, "neutral")
+                assert 0.0 <= h <= 1.0, f"h out of range: {h}"
+                assert 0.0 <= d <= 1.0, f"d out of range: {d}"
+                assert 0.0 <= n <= 1.0, f"n out of range: {n}"
                 label_idx = int(prob.argmax())
                 label = self._label_map[label_idx]
                 results.append(SentenceScore(
