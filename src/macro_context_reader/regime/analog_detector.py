@@ -1,232 +1,200 @@
-"""
-Historical Analog Regime Detector — PRD-050 / CC-2b (Status: Placeholder)
+"""Mahalanobis Historical Analog Detector — PRD-050 CC-2b.
 
-Metodă alternativă de clasificare a regimului macro, data-driven,
-inspirată din Mulliner, Harvey, Xia & Fang (2025), "Regimes", SSRN 5164863.
+Finds historical periods most similar to the current macro environment
+using Mahalanobis distance on the standardized feature matrix.
 
-Principiu: În loc de reguli fixe (CPI > 3.0 → INFLATION), identificăm
-momentele istorice cele mai similare cu prezentul pe un vector de
-indicatori macro, și derivăm regimul din distribuția regimurilor analogilor.
+Methodology:
+  d_M(v_t, v_tau) = sqrt[(v_t - v_tau)^T * Sigma^-1 * (v_t - v_tau)]
+  where Sigma is the sample covariance with Tikhonov regularization
+  if near-singular (det < 1e-10).
 
-Metodologie:
-  1. Construiești vectorul macro curent:
-     v_t = [yield_curve_slope, CPI_yoy, HY_credit_spread,
-            stock_bond_correlation, oil_price, copper_price]
+Anti-leakage: exclude_window_days=365 prevents temporal autocorrelation
+from contaminating analog selection.
 
-  2. Calculezi distanța față de fiecare lună din istoric (1980–prezent):
-     d(t, τ) = distanță(v_t, v_τ)
-
-  3. Sortezi după distanță, iei top-K analogi (ex: K=10)
-
-  4. Regimul curent = distribuție de probabilitate peste regimurile analogilor:
-     {"inflation": 0.4, "growth": 0.35, "financial_stability": 0.25}
-     Nu mai e un label binar — e o distribuție.
-
-  5. "Anti-regimuri" = momentele cele mai diferite de prezent (distanță maximă)
-     → ce NU se va întâmpla probabil (putere predictivă negativă)
-
-DISTANȚĂ — două metode, comparate empiric:
-
-  A) Distanța Mahalanobis cu sample covariance (DEFAULT pentru vectorul nostru):
-     d_M = √[(v_t - v_τ)ᵀ · Σ⁻¹ · (v_t - v_τ)]
-     Avantaj: ține cont de scale diferite și corelații dintre variabile
-     Când: 6 variabile × 540 obs → raport 90 → sample covariance stabil
-
-  B) Distanța Mahalanobis cu Ledoit-Wolf estimator (REZERVAT pentru extinderi):
-     Când: vectorul crește la 20+ variabile → sample covariance devine instabil
-     Ledoit-Wolf regularizează matricea de covarianță
-     from sklearn.covariance import LedoitWolf
-
-  NOTĂ: Distanța Euclidiană simplă NU e folosită — biased de scale diferite.
-  Chiar și standardizată (z-score), ignoră corelațiile dintre variabile.
-  Mahalanobis rezolvă ambele probleme simultan.
-
-INTEGRARE CU PRD-050 (classifier.py):
-  Cele două metode de clasificare rulează în paralel:
-    A) Rule-based (classifier.py): reguli fixe pe thresholds YAML
-    B) Analog-based (analog_detector.py): distanță Mahalanobis pe istoricul macro
-  Metoda cu performance mai bun pe USMPD backtesting devine default.
-
-SURSE DATE (toate FRED, gratuite, ~45 ani de date lunare = ~540 observații):
-  T10Y2Y      → yield curve slope (10Y - 2Y)
-  CPIAUCSL    → CPI YoY
-  BAMLH0A0HYM2 → HY credit spread (bps)
-  SP500 + DGS10 → stock-bond correlation (calculat rolling 12M)
-  DCOILWTICO  → oil price
-  PCOPPUSDM   → copper price
-
-Referință: Mulliner, Harvey, Xia, Fang (2025) — "Regimes", SSRN 5164863
-Referință distanță: Chiapparoli (2025) — "Macroeconomic Factor Timing", SSRN 5287108
-DO NOT implement until PRD-050 is Approved and CC-1, CC-2 are Done.
+Refs:
+  Mulliner, Harvey, Xia & Fang (2025), "Regimes", SSRN 5164863
+  Chiapparoli (2025), "Macroeconomic Factor Timing", SSRN 5287108
+  PRD-050 CC-2b
 """
 
 from __future__ import annotations
 
-from typing import Literal
+import logging
+from pathlib import Path
 
+import numpy as np
 import pandas as pd
+from scipy.spatial.distance import mahalanobis
 
-DistanceMethod = Literal["mahalanobis_sample", "mahalanobis_ledoitwolf"]
-# NOTE: Euclidean exclus — biased de scale diferite și ignoră corelații
+from macro_context_reader.regime.schemas import AnalogMatch
 
+logger = logging.getLogger(__name__)
 
-def build_macro_vector(
-    fred_api_key: str,
-    as_of_date: str | None = None,
-) -> pd.Series:
-    """
-    Construiește vectorul macro curent pentru luna dată.
-
-    Returns:
-        pd.Series cu index = nume variabile, valori = valori macro normalizate
-        {
-          "yield_curve_slope": float,   # T10Y2Y, %
-          "cpi_yoy": float,             # CPIAUCSL YoY %
-          "hy_credit_spread": float,    # BAMLH0A0HYM2, bps
-          "stock_bond_corr": float,     # rolling 12M, ∈ [-1, +1]
-          "oil_price": float,           # DCOILWTICO, USD
-          "copper_price": float,        # PCOPPUSDM, USD/lb
-        }
-
-    NOTE: valorile brute — normalizarea se face în compute_distances()
-          prin matricea de covarianță, nu manual.
-    TODO: PRD-050 / CC-2b
-    """
-    raise NotImplementedError("TODO: PRD-050 / CC-2b")
+DEFAULT_COV_PATH = Path("data/regime/mahalanobis_cov.npy")
+TIKHONOV_EPSILON = 1e-6
 
 
-def build_historical_matrix(
-    fred_api_key: str,
-    start_year: int = 1980,
-    end_date: str | None = None,
-) -> pd.DataFrame:
-    """
-    Construiește matricea istorică — câte un vector macro per lună.
+class MahalanobisAnalogDetector:
+    """Historical analog detector using Mahalanobis distance."""
 
-    Returns:
-        pd.DataFrame shape (n_months, 6)
-        Index: DatetimeIndex (lunar)
-        Columns: aceleași 6 variabile ca build_macro_vector()
+    def __init__(self) -> None:
+        self.cov: np.ndarray | None = None
+        self.cov_inv: np.ndarray | None = None
+        self.regularized: bool = False
 
-    ~45 ani × 12 luni = ~540 observații
-    Raport obs/variabile = 540/6 = 90 → sample covariance stabil.
+    def fit(self, features: pd.DataFrame) -> None:
+        """Compute sample covariance and its inverse.
 
-    NOTE: point-in-time — fiecare lună conține doar date disponibile
-          la acea dată (nu revizii ulterioare). Critică pentru backtesting.
-    TODO: PRD-050 / CC-2b
-    """
-    raise NotImplementedError("TODO: PRD-050 / CC-2b")
+        Applies Tikhonov regularization (cov + epsilon*I) if the
+        covariance matrix determinant is below 1e-10.
+        """
+        X = features.values
+        self.cov = np.cov(X, rowvar=False)
 
+        det = np.linalg.det(self.cov)
+        if abs(det) < 1e-10:
+            logger.warning(
+                "Covariance near-singular (det=%.2e), applying Tikhonov regularization",
+                det,
+            )
+            self.cov = self.cov + TIKHONOV_EPSILON * np.eye(self.cov.shape[0])
+            self.regularized = True
+        else:
+            self.regularized = False
 
-def compute_distances(
-    v_current: pd.Series,
-    historical_matrix: pd.DataFrame,
-    method: DistanceMethod = "mahalanobis_sample",
-) -> pd.Series:
-    """
-    Calculează distanța dintre vectorul curent și fiecare lună istorică.
+        self.cov_inv = np.linalg.inv(self.cov)
+        logger.info(
+            "Fitted covariance: shape=%s, det=%.4e, regularized=%s",
+            self.cov.shape, np.linalg.det(self.cov), self.regularized,
+        )
 
-    Metoda A — mahalanobis_sample (DEFAULT):
-      cov = np.cov(historical_matrix.T)  ← sample covariance
-      cov_inv = np.linalg.inv(cov)
-      d = mahalanobis(v_current, v_tau, cov_inv) pentru fiecare τ
+    def find_analogs(
+        self,
+        query_date: pd.Timestamp,
+        features: pd.DataFrame,
+        k: int = 5,
+        exclude_window_days: int = 365,
+        eurusd: pd.Series | None = None,
+    ) -> list[AnalogMatch]:
+        """Find top-k historical analogs by Mahalanobis distance.
 
-    Metoda B — mahalanobis_ledoitwolf (REZERVAT pentru 20+ variabile):
-      from sklearn.covariance import LedoitWolf
-      lw = LedoitWolf().fit(historical_matrix)
-      cov_inv = lw.precision_
-      d = mahalanobis(v_current, v_tau, cov_inv) pentru fiecare τ
+        Args:
+            query_date: The date to find analogs for.
+            features: Full historical feature matrix (DatetimeIndex).
+            k: Number of analogs to return.
+            exclude_window_days: Days around query_date to exclude (anti-leakage).
+            eurusd: Optional EUR/USD series for forward-90d performance.
 
-    Returns:
-        pd.Series cu index = date istorice, valori = distanțe
-        Sortată ascending (distanță mică = analog apropiat)
+        Returns:
+            List of AnalogMatch sorted by distance ascending.
+        """
+        if self.cov_inv is None:
+            raise RuntimeError("Detector not fitted. Call fit() first.")
 
-    TODO: PRD-050 / CC-2b
-    """
-    raise NotImplementedError("TODO: PRD-050 / CC-2b")
+        if query_date not in features.index:
+            # Find nearest date
+            idx = features.index.get_indexer([query_date], method="nearest")[0]
+            query_date = features.index[idx]
 
+        query_vec = features.loc[query_date].values
 
-def find_analogs(
-    distances: pd.Series,
-    top_k: int = 10,
-) -> pd.DataFrame:
-    """
-    Identifică top-K analogi istorici (distanță minimă) și
-    top-K anti-regimuri (distanță maximă).
+        # Compute distances, excluding temporal window around query
+        distances = {}
 
-    Returns:
-        pd.DataFrame cu coloane:
-        {
-          "date": DatetimeIndex,
-          "distance": float,
-          "type": "analog" | "anti_regime",
-          "rank": int,
-        }
+        for date, row in features.iterrows():
+            if exclude_window_days > 0:
+                window_start = query_date - pd.Timedelta(days=exclude_window_days)
+                window_end = query_date + pd.Timedelta(days=exclude_window_days)
+                if window_start <= date <= window_end:
+                    continue
+            dist = mahalanobis(query_vec, row.values, self.cov_inv)
+            distances[date] = dist
 
-    Anti-regimurile = momentele cele mai diferite de prezent.
-    Putere predictivă: ce s-a întâmplat în anti-regimuri
-    e probabil ce NU se va întâmpla acum.
-    Referință: Mulliner & Harvey (2025) — anti-regimuri au
-    putere predictivă negativă demonstrată empiric.
+        if not distances:
+            raise RuntimeError(
+                f"No valid analogs found outside ±{exclude_window_days}d window "
+                f"around {query_date.date()}"
+            )
 
-    TODO: PRD-050 / CC-2b
-    """
-    raise NotImplementedError("TODO: PRD-050 / CC-2b")
+        sorted_dates = sorted(distances, key=distances.get)
+        top_k = sorted_dates[:k]
 
+        analogs = []
+        for rank, date in enumerate(top_k, start=1):
+            fwd_90d = None
+            if eurusd is not None:
+                fwd_date = date + pd.Timedelta(days=90)
+                if date in eurusd.index:
+                    future = eurusd.loc[eurusd.index >= fwd_date]
+                    if not future.empty:
+                        fwd_90d = round(
+                            (future.iloc[0] - eurusd.loc[date]) / eurusd.loc[date] * 100,
+                            2,
+                        )
+            analogs.append(AnalogMatch(
+                date=date.to_pydatetime(),
+                distance=round(distances[date], 4),
+                rank=rank,
+                eurusd_forward_90d_pct=fwd_90d,
+            ))
 
-def compute_regime_distribution(
-    analogs: pd.DataFrame,
-    regime_history: pd.DataFrame,
-) -> dict[str, float]:
-    """
-    Derivă distribuția de probabilitate a regimului curent
-    din regimurile analogilor istorici.
+        return analogs
 
-    Args:
-        analogs: output din find_analogs() — top-K analogi
-        regime_history: seria temporală de regimuri din PRD-050
-                        (output din classifier.py per dată istorică)
+    def find_anti_regimes(
+        self,
+        query_date: pd.Timestamp,
+        features: pd.DataFrame,
+        k: int = 5,
+        exclude_window_days: int = 365,
+    ) -> list[AnalogMatch]:
+        """Find top-k anti-regimes (most DIFFERENT historical periods).
 
-    Returns:
-        distribuție normalizată, sumă = 1.0:
-        {
-          "inflation": 0.40,
-          "growth": 0.35,
-          "financial_stability": 0.25,
-        }
+        Anti-regimes have predictive power: what happened in anti-regimes
+        is unlikely to happen now (Mulliner et al. 2025).
+        """
+        if self.cov_inv is None:
+            raise RuntimeError("Detector not fitted. Call fit() first.")
 
-    Ponderare: analogii mai apropiați (distanță mai mică) primesc
-    greutate mai mare în distribuție (inverse distance weighting).
+        if query_date not in features.index:
+            idx = features.index.get_indexer([query_date], method="nearest")[0]
+            query_date = features.index[idx]
 
-    NOTE: acesta e output-ul critic care diferențiază metoda analog
-    de metoda rule-based — nu un label binar ci o distribuție.
-    TODO: PRD-050 / CC-2b
-    """
-    raise NotImplementedError("TODO: PRD-050 / CC-2b")
+        query_vec = features.loc[query_date].values
 
+        distances = {}
 
-def detect_regime_analog(
-    fred_api_key: str,
-    method: DistanceMethod = "mahalanobis_sample",
-    top_k: int = 10,
-    start_year: int = 1980,
-) -> dict:
-    """
-    Entry point principal — rulează întregul pipeline analog detection.
+        for date, row in features.iterrows():
+            if exclude_window_days > 0:
+                window_start = query_date - pd.Timedelta(days=exclude_window_days)
+                window_end = query_date + pd.Timedelta(days=exclude_window_days)
+                if window_start <= date <= window_end:
+                    continue
+            dist = mahalanobis(query_vec, row.values, self.cov_inv)
+            distances[date] = dist
 
-    Returns:
-        {
-          "regime_distribution": dict[str, float],  ← distribuție, nu label
-          "top_analogs": pd.DataFrame,               ← top-K momente similare
-          "anti_regimes": pd.DataFrame,              ← top-K momente diferite
-          "dominant_regime": str,                    ← regimul cu prob maximă
-          "dominant_confidence": float,              ← probabilitatea maximă
-          "method": str,
-          "as_of_date": str,
-        }
+        # Sort descending — farthest first
+        sorted_dates = sorted(distances, key=distances.get, reverse=True)
+        top_k = sorted_dates[:k]
 
-    Consumat de PRD-050 classifier.py alături de rule-based output.
-    Consumat de PRD-051 Regime Monitor pentru vizualizare analogi istorici.
-    TODO: PRD-050 / CC-2b
-    """
-    raise NotImplementedError("TODO: PRD-050 / CC-2b")
+        return [
+            AnalogMatch(
+                date=date.to_pydatetime(),
+                distance=round(distances[date], 4),
+                rank=rank,
+            )
+            for rank, date in enumerate(top_k, start=1)
+        ]
+
+    def save(self, path: Path = DEFAULT_COV_PATH) -> None:
+        """Persist covariance matrix to disk."""
+        if self.cov is None:
+            raise RuntimeError("No covariance to save.")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        np.save(path, self.cov)
+        logger.info("Saved covariance to %s", path)
+
+    def load(self, path: Path = DEFAULT_COV_PATH) -> None:
+        """Load covariance from disk and recompute inverse."""
+        self.cov = np.load(path)
+        self.cov_inv = np.linalg.inv(self.cov)
+        logger.info("Loaded covariance from %s, shape=%s", path, self.cov.shape)

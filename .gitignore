@@ -60,9 +60,13 @@ data/raw/*
 data/processed/*
 data/market_pricing/*.parquet
 data/market_pricing/inflation_expectations/*.parquet
+data/regime/*.parquet
+data/regime/*.pkl
+data/regime/*.npy
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 !data/market_pricing/.gitkeep
+!data/regime/.gitkeep
 
 # Model weights
 *.pt
