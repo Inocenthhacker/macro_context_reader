@@ -47,7 +47,10 @@ def bootstrap_colab() -> None:
         print(f"  Cloning {REPO_NAME}...")
         try:
             gh_token = userdata.get("GITHUB_TOKEN")
-            gh_user = userdata.get("GITHUB_USER") or "Inocenthhacker"
+            try:
+                gh_user = userdata.get("GITHUB_USER")
+            except Exception:
+                gh_user = "Inocenthhacker"
             url = f"https://{gh_user}:{gh_token}@{REPO_URL_BASE}"
         except Exception:
             raise RuntimeError(
