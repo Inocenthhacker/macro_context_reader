@@ -99,6 +99,28 @@ class TestSplitPDFIntoSections:
         assert "Kansas City" in ALL_DISTRICTS
 
 
+class TestLoadOrFetchMkdir:
+    def test_creates_cache_dir_if_missing(self, tmp_path, monkeypatch) -> None:
+        """_load_or_fetch must create parent dirs before writing cache file."""
+        import macro_context_reader.economic_sentiment.scraper as mod
+        from unittest.mock import MagicMock
+
+        nested = tmp_path / "a" / "b" / "c" / "cache.html"
+        assert not nested.parent.exists()
+
+        fake_resp = MagicMock()
+        fake_resp.text = "<html>test</html>"
+        fake_session = MagicMock()
+        fake_session.get.return_value = fake_resp
+
+        # Bypass rate-limit sleep in _request_with_retry
+        monkeypatch.setattr(mod, "_request_with_retry", lambda s, u: fake_resp)
+
+        result = mod._load_or_fetch(fake_session, "https://example.com", nested)
+        assert nested.exists()
+        assert result == "<html>test</html>"
+
+
 class TestDistrictCompleteness:
     def test_ordinal_mapping_complete(self) -> None:
         from macro_context_reader.economic_sentiment.scraper import _ORDINAL_DISTRICTS

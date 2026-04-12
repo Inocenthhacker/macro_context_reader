@@ -102,6 +102,7 @@ def _load_or_fetch(session: requests.Session, url: str, cache: Path) -> str:
         return cache.read_text(encoding="utf-8")
     resp = _request_with_retry(session, url)
     text = resp.text
+    cache.parent.mkdir(parents=True, exist_ok=True)
     cache.write_text(text, encoding="utf-8")
     return text
 
