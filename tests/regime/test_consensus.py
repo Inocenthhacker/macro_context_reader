@@ -45,7 +45,7 @@ def fitted_models(
     synthetic_features: pd.DataFrame,
 ) -> tuple[HMMRegimeClassifier, MahalanobisAnalogDetector]:
     hmm = HMMRegimeClassifier()
-    hmm.fit(synthetic_features, candidate_states=(3,))
+    hmm.fit(synthetic_features, n_states=3, n_seeds=3)
 
     detector = MahalanobisAnalogDetector()
     detector.fit(synthetic_features)

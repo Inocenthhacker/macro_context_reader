@@ -39,9 +39,16 @@ class HMMFitDiagnostics(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    n_states_selected: int
-    bic_scores: dict[int, float] = Field(
-        ..., description="BIC score per candidate n_states"
+    grid: list[int] = Field(..., description="Candidate n_states evaluated")
+    bic_mean: dict[int, float]
+    bic_std: dict[int, float]
+    aic_mean: dict[int, float]
+    aic_std: dict[int, float]
+    ari_mean: dict[int, float]
+    ari_std: dict[int, float]
+    selected_n_states: int
+    selection_reason: str = Field(
+        ..., description="'min BIC among stable' or 'fallback to max ARI'"
     )
     converged: bool
     n_iter_used: int
