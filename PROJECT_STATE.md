@@ -37,7 +37,7 @@
 
 | Fișier | Linii | Descriere |
 |---|---|---|
-| `positioning/cot_structural.py` | 75 | Ingestie COT CFTC Leveraged Funds + Asset Managers, calcul net positions, delta WoW, percentilă 52W |
+| `positioning/cot_leveraged_funds.py` | 75 | Ingestie COT CFTC Leveraged Funds + Asset Managers, calcul net positions, delta WoW, percentilă 52W |
 | `positioning/oi_signal.py` | 62 | Fetch EUR futures Open Interest, calcul semnal OI delta |
 | `positioning/options_signal.py` | 59 | Fetch EUR put/call ratio, normalizare, semnal options skew |
 | `positioning/retail_signal.py` | 53 | Fetch Myfxbook retail sentiment, semnal contrarianș |

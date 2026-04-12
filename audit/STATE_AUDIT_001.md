@@ -34,7 +34,7 @@ All `.py` files under `src/macro_context_reader/`, with metadata.
 | `output/combination_rules/yager.py` | 24 | yes | combine_yager | — | yes |
 | `output/position_sizing.py` | 30 | yes | compute_position_signal | — | yes |
 | `positioning/__init__.py` | 2 | no | — | — | no |
-| `positioning/cot_structural.py` | 75 | yes | fetch_cot_eur, compute_cot_signals, save_cot_parquet, run_cot_pipeline | — | no |
+| `positioning/cot_leveraged_funds.py` | 75 | yes | fetch_cot_eur, compute_cot_signals, save_cot_parquet, run_cot_pipeline | — | no |
 | `positioning/oi_signal.py` | 62 | yes | fetch_eur_oi, compute_oi_signal, save_oi_parquet | — | no |
 | `positioning/options_signal.py` | 59 | yes | fetch_eur_putcall_ratio, compute_options_signal, save_options_parquet | — | no |
 | `positioning/retail_signal.py` | 53 | yes | fetch_retail_sentiment, compute_retail_signal, save_retail_parquet | — | no |
@@ -117,7 +117,7 @@ All `.py` files under `src/macro_context_reader/`, with metadata.
 | Expected Path | Status |
 |---|---|
 | `positioning/__init__.py` | EXISTS |
-| `positioning/cot_structural.py` | EXISTS |
+| `positioning/cot_leveraged_funds.py` | EXISTS |
 | `positioning/oi_signal.py` | EXISTS |
 | `positioning/options_signal.py` | EXISTS |
 | `positioning/retail_signal.py` | EXISTS |
@@ -177,7 +177,7 @@ All `.py` files under `src/macro_context_reader/`, with metadata.
 | `tests/divergence/__init__.py` | 0 | — |
 | `tests/market_pricing/__init__.py` | 0 | — |
 | `tests/positioning/__init__.py` | 0 | — |
-| `tests/positioning/test_cot_structural.py` | 7 | test_compute_cot_signals_columns, test_lev_net_calculation, test_lev_percentile_range, test_date_dtype, test_sorted_ascending, test_save_parquet, test_fetch_skips_on_error |
+| `tests/positioning/test_cot_leveraged_funds.py` | 7 | test_compute_cot_signals_columns, test_lev_net_calculation, test_lev_percentile_range, test_date_dtype, test_sorted_ascending, test_save_parquet, test_fetch_skips_on_error |
 | `tests/positioning/test_tactical_positioning.py` | 5 | test_tactical_score_range, test_graceful_degradation_one_source_missing, test_graceful_degradation_two_sources_missing, test_sources_available_count, test_all_nan_row |
 | `tests/rhetoric/__init__.py` | 0 | — |
 
@@ -290,7 +290,7 @@ All textual references to `PRD-XXX` patterns found in `src/` and `tests/`.
 | **PRD-102** | Draft, CC-1 Done | 11 | yes (rhetoric/concept_framework/**) | **CONSISTENT** — placeholders match "CC-1 Done" claim |
 | **PRD-200** | Necreat | 2 (cross-refs only) | no | **CONSISTENT** — no code, only cross-referenced |
 | **PRD-300** | Reserved, CC-0 Done | 8 | yes (divergence/*.py) | **CONSISTENT** — placeholders match "CC-0 Done" claim |
-| **PRD-400** | Approved | 1 (cross-ref only) | no (cot_structural.py has real code, no placeholder markers) | **SUSPECT** — ROADMAP says "Approved" with placeholder marker, but `positioning/cot_structural.py` contains real implementation (no NotImplementedError). Status may be ahead of declared |
+| **PRD-400** | Approved | 1 (cross-ref only) | no (cot_leveraged_funds.py has real code, no placeholder markers) | **SUSPECT** — ROADMAP says "Approved" with placeholder marker, but `positioning/cot_leveraged_funds.py` contains real implementation (no NotImplementedError). Status may be ahead of declared |
 | **PRD-401** | Approved | 2 | no (oi_signal.py, options_signal.py, retail_signal.py, tactical_composite.py all have real code) | **SUSPECT** — same as PRD-400: real implementations exist but ROADMAP Faza 1-3 shows CC tasks as not started |
 | **PRD-500** | Reserved, CC-0 Done | 13 | yes (output/**) | **CONSISTENT** — placeholders match "CC-0 Done" claim |
 

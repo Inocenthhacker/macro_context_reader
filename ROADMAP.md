@@ -253,7 +253,7 @@ macro_context_reader/
     │
     ├── positioning/                   ← PRD-400/401 ✅ PLACEHOLDER DONE
     │   ├── __init__.py
-    │   ├── cot_structural.py          ← COT TFF Leveraged Funds + Asset Managers
+    │   ├── cot_leveraged_funds.py          ← COT TFF Leveraged Funds + Asset Managers
     │   ├── oi_signal.py               ← CME EUR OI delta signal
     │   ├── options_signal.py          ← Put/call skew normalizat
     │   ├── retail_signal.py           ← Myfxbook (CONTRARIANȘ)
