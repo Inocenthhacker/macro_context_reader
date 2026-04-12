@@ -79,11 +79,15 @@ class RegimeConditionalResults(BaseModel):
 # Data loading and alignment
 # ---------------------------------------------------------------------------
 
-def load_aligned_data(start: str = "2001-01-01") -> pd.DataFrame:
+def load_aligned_data(start: str = "2003-01-01") -> pd.DataFrame:
     """Load and align real_rate_diff, EUR/USD, and regime labels on monthly index.
 
     Tries parquet cache first, falls back to computing fresh from FRED/ECB.
     Regime labels computed via HMM fit on full history.
+
+    Start date default is 2003-01-01 because the binding constraint is
+    T5YIE (5Y breakeven inflation, FRED) which begins 2003-01-02.
+    Other series start earlier: DGS2 (1976), DEXUSEU (1999).
 
     Returns:
         DataFrame with columns: date, real_rate_diff, eurusd,
@@ -97,6 +101,10 @@ def load_aligned_data(start: str = "2001-01-01") -> pd.DataFrame:
     from macro_context_reader.regime.hmm_classifier import HMMRegimeClassifier
     from macro_context_reader.regime.consensus import get_regime_history
 
+    logger.info(
+        "Loading aligned data from %s (T5YIE availability constraint: 2003-01-02)",
+        start,
+    )
     start_dt = datetime.fromisoformat(start)
 
     # Load real rate differential
@@ -130,8 +138,15 @@ def load_aligned_data(start: str = "2001-01-01") -> pd.DataFrame:
 
     # Align on common monthly index
     merged = rrd_monthly.join(fx_monthly, how="inner").join(regime_indexed, how="inner")
-    merged = merged.loc[start:].dropna()
+    merged = merged.loc[start:]
+    merged = merged.dropna(subset=["real_rate_diff", "eurusd", "regime_state", "regime_label"])
     merged = merged.reset_index().rename(columns={"index": "date"})
+
+    if len(merged) < 50:
+        raise ValueError(
+            f"Aligned dataset has only {len(merged)} rows after NaN drop. "
+            "Check FRED series availability (T5YIE starts 2003-01-02)."
+        )
 
     logger.info("Aligned dataset: %d months", len(merged))
     return merged
