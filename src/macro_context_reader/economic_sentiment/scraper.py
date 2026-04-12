@@ -1,21 +1,24 @@
-"""Beige Book scraper — PRD-102 CC-1.
+"""Beige Book scraper — PRD-102 CC-1, CC-1-FIX2.
 
-Two sources:
-  - Minneapolis Fed archive (1970-2010): PDF-based historical archive
-    https://www.minneapolisfed.org/region-and-community/regional-economic-indicators/beige-book-archive
-  - Federal Reserve Board (1996-present): HTML per section
-    https://www.federalreserve.gov/monetarypolicy/beige-book-default.htm
+Validated URL patterns (empirically confirmed 2026-04-12):
+  - Archive index: {BASE}/monetarypolicy/beige-book-archive.htm
+  - Current index: {BASE}/monetarypolicy/publications/beige-book-default.htm
+  - National summary: {BASE}/monetarypolicy/beigebook{YYYYMM}-summary.htm
+  - District report:  {BASE}/monetarypolicy/beigebook{YYYYMM}-{slug}.htm
+  - Full PDF:         {BASE}/monetarypolicy/files/BeigeBook_{YYYYMMDD}.pdf
 
-Cache: data/economic_sentiment/raw/beige_book/{YYYYMMDD}_{section}.txt
+Cache: data/economic_sentiment/raw/beige_book/{YYYYMMDD}_{section}.html
+Text is extracted from HTML BEFORE caching (cache stores clean text, not raw HTML).
 Rate limiting: 2s between requests.
 
-Refs: PRD-102 CC-1
+Refs: PRD-102 CC-1, PRD-102/CC-1-FIX2
 """
 
 from __future__ import annotations
 
 import logging
 import re
+import shutil
 import time
 from datetime import datetime
 from pathlib import Path
@@ -29,9 +32,12 @@ logger = logging.getLogger(__name__)
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 CACHE_DIR = _REPO_ROOT / "data" / "economic_sentiment" / "raw" / "beige_book"
+
 BASE_URL = "https://www.federalreserve.gov"
-BEIGE_BOOK_URL = f"{BASE_URL}/monetarypolicy/beige-book-default.htm"
-MPLS_ARCHIVE_URL = "https://www.minneapolisfed.org/region-and-community/regional-economic-indicators/beige-book-archive"
+BB_BASE = f"{BASE_URL}/monetarypolicy"
+ARCHIVE_URL = f"{BB_BASE}/beige-book-archive.htm"
+CURRENT_URL = f"{BB_BASE}/publications/beige-book-default.htm"
+
 USER_AGENT = "MacroContextReader/1.0 (academic research)"
 REQUEST_DELAY = 2.0
 MAX_RETRIES = 3
@@ -41,6 +47,26 @@ ALL_DISTRICTS = [
     "Atlanta", "Chicago", "St. Louis", "Minneapolis", "Kansas City",
     "Dallas", "San Francisco",
 ]
+
+# URL slug for each district (empirically validated)
+DISTRICT_URL_SLUGS: dict[str, str] = {
+    "Boston": "boston",
+    "New York": "newyork",
+    "Philadelphia": "philadelphia",
+    "Cleveland": "cleveland",
+    "Richmond": "richmond",
+    "Atlanta": "atlanta",
+    "Chicago": "chicago",
+    "St. Louis": "stlouis",
+    "Minneapolis": "minneapolis",
+    "Kansas City": "kansascity",
+    "Dallas": "dallas",
+    "San Francisco": "sanfrancisco",
+}
+
+# Regex to extract YYYYMM from beigebook URLs
+_DATE_HTML_RE = re.compile(r"beigebook(\d{6})", re.IGNORECASE)
+_DATE_PDF_RE = re.compile(r"BeigeBook_(\d{8})", re.IGNORECASE)
 
 # Ordinal prefixes used in pre-2011 PDF district sections
 _ORDINAL_DISTRICTS = {
@@ -66,6 +92,10 @@ DISTRICT_HEADER_PATTERN = re.compile(
 )
 
 
+# ---------------------------------------------------------------------------
+# HTTP helpers
+# ---------------------------------------------------------------------------
+
 def _get_session() -> requests.Session:
     s = requests.Session()
     s.headers.update({"User-Agent": USER_AGENT})
@@ -87,56 +117,258 @@ def _request_with_retry(session: requests.Session, url: str) -> requests.Respons
     raise requests.RequestException(f"Failed after {MAX_RETRIES} retries: {url}")
 
 
-def _cache_path(pub_date: datetime, section: str) -> Path:
-    """Generate cache file path."""
+# ---------------------------------------------------------------------------
+# Cache helpers
+# ---------------------------------------------------------------------------
+
+def _cache_path(pub_date: datetime, section: str, ext: str = "txt") -> Path:
+    """Generate cache file path. Creates parent dirs."""
     slug = re.sub(r"[^a-z0-9]+", "_", section.lower().strip())[:60]
     date_str = pub_date.strftime("%Y%m%d")
-    path = CACHE_DIR / f"{date_str}_{slug}.txt"
+    path = CACHE_DIR / f"{date_str}_{slug}.{ext}"
     path.parent.mkdir(parents=True, exist_ok=True)
     return path
 
 
-def _load_or_fetch(session: requests.Session, url: str, cache: Path) -> str:
-    """Return cached text or fetch and cache."""
+def _read_cache(cache: Path) -> str | None:
+    """Read cached text file. Returns None if not found."""
     if cache.exists():
         return cache.read_text(encoding="utf-8")
-    resp = _request_with_retry(session, url)
-    text = resp.text
+    return None
+
+
+def _write_cache(cache: Path, text: str) -> None:
+    """Write text to cache file, creating parent dirs."""
     cache.parent.mkdir(parents=True, exist_ok=True)
     cache.write_text(text, encoding="utf-8")
-    return text
 
 
-def _extract_text_from_html(html: str) -> str:
-    """Extract readable text from a Fed HTML page."""
+def clear_cache() -> None:
+    """Remove all cached Beige Book files. Use before refetch with new scraper."""
+    if CACHE_DIR.exists():
+        shutil.rmtree(CACHE_DIR)
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    logger.info("Beige Book cache cleared: %s", CACHE_DIR)
+
+
+# ---------------------------------------------------------------------------
+# HTML content extraction
+# ---------------------------------------------------------------------------
+
+def extract_beige_book_content(html: str) -> str:
+    """Extract clean text from a Beige Book HTML page.
+
+    Targets div#article (Fed Board standard). Falls back to col-xs-12 col-sm-8,
+    then main element. Raises ValueError if content cannot be located or is
+    too short (< 500 chars after cleaning).
+    """
     soup = BeautifulSoup(html, "html.parser")
-    for tag in soup(["script", "style", "nav", "header", "footer", "aside"]):
+    for tag in soup(["script", "style", "nav", "header", "footer", "aside", "meta", "link"]):
         tag.decompose()
-    content = (
-        soup.find("div", id="article")
-        or soup.find("div", class_="col-xs-12 col-sm-8")
-        or soup.find("article")
-        or soup.find("main")
-        or soup
-    )
-    return content.get_text(separator="\n", strip=True)
+
+    content = soup.find("div", id="article")
+    if content is None:
+        content = soup.find(
+            "div", class_=lambda c: c and "col-xs-12" in c and "col-sm-8" in c,
+        )
+    if content is None:
+        content = soup.find("main")
+    if content is None:
+        raise ValueError(
+            "Cannot locate Beige Book content in HTML "
+            "(tried div#article, col-xs-12 col-sm-8, main)"
+        )
+
+    raw = content.get_text(separator="\n", strip=True)
+    lines = [line for line in raw.split("\n") if len(line) > 20]
+    clean = "\n".join(lines)
+
+    if len(clean) < 500:
+        raise ValueError(
+            f"Extracted content too short ({len(clean)} chars) -- "
+            "HTML structure may have changed"
+        )
+    return clean
 
 
-def _extract_pdf_text(pdf_path: Path) -> str:
-    """Extract text from a cached PDF using pdfplumber."""
+# ---------------------------------------------------------------------------
+# URL construction
+# ---------------------------------------------------------------------------
+
+def _build_url(pub_date: datetime, doc_type: str, district: str | None = None) -> str:
+    """Build Beige Book URL from validated patterns.
+
+    Args:
+        pub_date: Publication date (only year+month used for YYYYMM).
+        doc_type: "national_summary" or "district_report".
+        district: District name (required for district_report).
+
+    Returns:
+        Full URL string.
+    """
+    yyyymm = pub_date.strftime("%Y%m")
+    if doc_type == "national_summary":
+        return f"{BB_BASE}/beigebook{yyyymm}-summary.htm"
+    elif doc_type == "district_report":
+        if district is None:
+            raise ValueError("district required for district_report")
+        slug = DISTRICT_URL_SLUGS.get(district)
+        if slug is None:
+            raise ValueError(f"Unknown district: {district}")
+        return f"{BB_BASE}/beigebook{yyyymm}-{slug}.htm"
+    else:
+        raise ValueError(f"Unknown doc_type: {doc_type}")
+
+
+# ---------------------------------------------------------------------------
+# Archive index — discover publication dates
+# ---------------------------------------------------------------------------
+
+def fetch_archive_dates(
+    session: requests.Session,
+    start_year: int = 2011,
+    end_date: datetime | None = None,
+) -> list[datetime]:
+    """Fetch all Beige Book publication dates from the Fed archive page.
+
+    Parses both archive and current-publications pages, merges and deduplicates.
+    Returns sorted list of publication dates (day=15 for YYYYMM-only URLs).
+    """
+    dates: set[str] = set()  # YYYYMM strings for dedup
+
+    for index_url, cache_name in [
+        (ARCHIVE_URL, "_archive_index.html"),
+        (CURRENT_URL, "_current_index.html"),
+    ]:
+        cache = _cache_path(datetime(2000, 1, 1), cache_name, ext="html")
+        cached = _read_cache(cache)
+        if cached is None:
+            try:
+                resp = _request_with_retry(session, index_url)
+                _write_cache(cache, resp.text)
+                cached = resp.text
+            except Exception as e:
+                logger.warning("Failed to fetch index %s: %s", index_url, e)
+                continue
+
+        soup = BeautifulSoup(cached, "html.parser")
+        for a in soup.find_all("a", href=True):
+            href = a["href"]
+            m = _DATE_HTML_RE.search(href)
+            if m:
+                dates.add(m.group(1))  # YYYYMM
+                continue
+            m = _DATE_PDF_RE.search(href)
+            if m:
+                yyyymmdd = m.group(1)
+                dates.add(yyyymmdd[:6])  # extract YYYYMM
+
+    # Convert to datetime, filter by range
+    result: list[datetime] = []
+    for yyyymm in dates:
+        try:
+            year = int(yyyymm[:4])
+            month = int(yyyymm[4:6])
+            dt = datetime(year, month, 15)  # day=15 as approximation
+        except (ValueError, IndexError):
+            continue
+        if dt.year < start_year:
+            continue
+        if end_date is not None and dt > end_date:
+            continue
+        result.append(dt)
+
+    return sorted(result)
+
+
+# ---------------------------------------------------------------------------
+# Fetch individual sections
+# ---------------------------------------------------------------------------
+
+def fetch_beige_book_national(
+    session: requests.Session, pub_date: datetime,
+) -> BeigeBookDocument | None:
+    """Fetch national summary for one Beige Book publication.
+
+    Returns BeigeBookDocument with clean extracted text, or None on failure.
+    Cache stores extracted text (not raw HTML).
+    """
+    cache = _cache_path(pub_date, "national_summary")
+    cached = _read_cache(cache)
+    if cached is not None:
+        return BeigeBookDocument(
+            publication_date=pub_date,
+            section_type="national_summary",
+            district=None,
+            url=_build_url(pub_date, "national_summary"),
+            raw_text=cached,
+            source_file=cache,
+        )
+
+    url = _build_url(pub_date, "national_summary")
     try:
-        import pdfplumber
-    except ImportError:
-        raise ImportError("pdfplumber is required for PDF Beige Books: pip install pdfplumber")
+        resp = _request_with_retry(session, url)
+        text = extract_beige_book_content(resp.text)
+        _write_cache(cache, text)
+        return BeigeBookDocument(
+            publication_date=pub_date,
+            section_type="national_summary",
+            district=None,
+            url=url,
+            raw_text=text,
+            source_file=cache,
+        )
+    except Exception as e:
+        logger.warning("Failed national summary %s: %s", pub_date.date(), e)
+        return None
 
-    with pdfplumber.open(pdf_path) as pdf:
-        pages = []
-        for page in pdf.pages:
-            text = page.extract_text()
-            if text:
-                pages.append(text)
-    return "\n".join(pages)
 
+def fetch_beige_book_districts(
+    session: requests.Session, pub_date: datetime,
+) -> list[BeigeBookDocument]:
+    """Fetch all 12 district reports for one Beige Book publication.
+
+    Cache stores extracted text (not raw HTML). Skips districts that fail.
+    """
+    docs: list[BeigeBookDocument] = []
+
+    for district, slug in DISTRICT_URL_SLUGS.items():
+        cache = _cache_path(pub_date, slug)
+        cached = _read_cache(cache)
+
+        if cached is not None:
+            docs.append(BeigeBookDocument(
+                publication_date=pub_date,
+                section_type="district_report",
+                district=district,
+                url=_build_url(pub_date, "district_report", district),
+                raw_text=cached,
+                source_file=cache,
+            ))
+            continue
+
+        url = _build_url(pub_date, "district_report", district)
+        try:
+            resp = _request_with_retry(session, url)
+            text = extract_beige_book_content(resp.text)
+            _write_cache(cache, text)
+            docs.append(BeigeBookDocument(
+                publication_date=pub_date,
+                section_type="district_report",
+                district=district,
+                url=url,
+                raw_text=text,
+                source_file=cache,
+            ))
+        except Exception as e:
+            logger.warning("Failed %s for %s: %s", district, pub_date.date(), e)
+
+    return docs
+
+
+# ---------------------------------------------------------------------------
+# PDF splitting (for pre-2011 archive)
+# ---------------------------------------------------------------------------
 
 def _split_pdf_into_sections(full_text: str) -> dict[str, str]:
     """Split a full Beige Book PDF text into national + district sections.
@@ -145,7 +377,6 @@ def _split_pdf_into_sections(full_text: str) -> dict[str, str]:
     """
     sections: dict[str, str] = {}
 
-    # Find all district headers and their positions
     header_positions: list[tuple[int, str]] = []
     for match in DISTRICT_HEADER_PATTERN.finditer(full_text):
         header_text = match.group(0).lower()
@@ -155,17 +386,14 @@ def _split_pdf_into_sections(full_text: str) -> dict[str, str]:
                 break
 
     if not header_positions:
-        # No district headers found -> treat entire text as national summary
         sections["national_summary"] = full_text
         return sections
 
-    # Everything before first district header = national summary
     first_pos = header_positions[0][0]
     national = full_text[:first_pos].strip()
     if len(national) > 50:
         sections["national_summary"] = national
 
-    # Split between district headers
     for i, (pos, district) in enumerate(header_positions):
         if i + 1 < len(header_positions):
             end = header_positions[i + 1][0]
@@ -178,232 +406,23 @@ def _split_pdf_into_sections(full_text: str) -> dict[str, str]:
     return sections
 
 
-def fetch_beige_book_index_fed(
-    session: requests.Session, start_year: int = 1996,
-) -> list[dict]:
-    """Fetch index of Beige Book publications from federalreserve.gov.
-
-    Returns list of {date: datetime, url: str} for each publication.
-    """
-    cache = CACHE_DIR / "_fed_index.html"
-    html = _load_or_fetch(session, BEIGE_BOOK_URL, cache)
-    soup = BeautifulSoup(html, "html.parser")
-
-    entries: list[dict] = []
-    for link in soup.find_all("a", href=True):
-        href = link["href"]
-        if "/monetarypolicy/beigebook" not in href:
-            continue
-        # Extract date from URL patterns like beigebook202401 or beige-book-20240131
-        date_match = re.search(r"(\d{6,8})", href)
-        if not date_match:
-            continue
-        date_str = date_match.group(1)
-        try:
-            if len(date_str) == 6:
-                pub_date = datetime.strptime(date_str, "%Y%m")
-            else:
-                pub_date = datetime.strptime(date_str, "%Y%m%d")
-        except ValueError:
-            continue
-        if pub_date.year < start_year:
-            continue
-
-        url = href if href.startswith("http") else BASE_URL + href
-        entries.append({"date": pub_date, "url": url})
-
-    # Deduplicate by date
-    seen: set[str] = set()
-    unique: list[dict] = []
-    for e in entries:
-        key = e["date"].strftime("%Y%m%d")
-        if key not in seen:
-            seen.add(key)
-            unique.append(e)
-
-    return sorted(unique, key=lambda e: e["date"])
-
-
-def _fetch_fed_publication(
-    session: requests.Session, pub_date: datetime, index_url: str,
-) -> list[BeigeBookDocument]:
-    """Fetch national summary + district reports for one Fed publication.
-
-    Post-2011 format: main page links to individual district pages.
-    """
-    docs: list[BeigeBookDocument] = []
-
-    cache = _cache_path(pub_date, "index")
-    html = _load_or_fetch(session, index_url, cache)
-    soup = BeautifulSoup(html, "html.parser")
-
-    # Try to find individual section links
-    section_links: list[tuple[str, str | None]] = []  # (url, district_or_none)
-
-    for link in soup.find_all("a", href=True):
-        href = link["href"]
-        text = link.get_text(strip=True).lower()
-
-        # National summary link
-        if any(kw in text for kw in ["overall", "summary", "national"]):
-            url = href if href.startswith("http") else BASE_URL + href
-            section_links.append((url, None))
-            continue
-
-        # District links
-        for district in ALL_DISTRICTS:
-            if district.lower() in text:
-                url = href if href.startswith("http") else BASE_URL + href
-                section_links.append((url, district))
-                break
-
-    if section_links:
-        # Modern format: fetch each section separately
-        for url, district in section_links:
-            section_type = "national_summary" if district is None else "district_report"
-            section_name = district or "national_summary"
-            cache_f = _cache_path(pub_date, section_name)
-            try:
-                section_html = _load_or_fetch(session, url, cache_f)
-                raw_text = _extract_text_from_html(section_html)
-                if len(raw_text) < 100:
-                    continue
-                docs.append(BeigeBookDocument(
-                    publication_date=pub_date,
-                    section_type=section_type,
-                    district=district,
-                    url=url,
-                    raw_text=raw_text,
-                    source_file=cache_f,
-                ))
-            except Exception as e:
-                logger.warning("Failed to fetch %s %s: %s", section_name, pub_date.date(), e)
-    else:
-        # Older format or single-page: extract text and try to split
-        full_text = _extract_text_from_html(html)
-        if len(full_text) > 500:
-            sections = _split_pdf_into_sections(full_text)
-            for section_name, text in sections.items():
-                if section_name == "national_summary":
-                    docs.append(BeigeBookDocument(
-                        publication_date=pub_date,
-                        section_type="national_summary",
-                        district=None,
-                        url=index_url,
-                        raw_text=text,
-                        source_file=cache,
-                    ))
-                else:
-                    docs.append(BeigeBookDocument(
-                        publication_date=pub_date,
-                        section_type="district_report",
-                        district=section_name,
-                        url=index_url,
-                        raw_text=text,
-                        source_file=cache,
-                    ))
-
-    return docs
-
-
-def fetch_beige_book_index_mpls(
-    session: requests.Session, start_year: int = 1970, end_year: int = 2010,
-) -> list[dict]:
-    """Fetch index from Minneapolis Fed archive (1970-2010 PDFs).
-
-    Returns list of {date: datetime, url: str, format: 'pdf'}.
-    """
-    cache = CACHE_DIR / "_mpls_index.html"
-    try:
-        html = _load_or_fetch(session, MPLS_ARCHIVE_URL, cache)
-    except Exception as e:
-        logger.warning("Minneapolis archive unavailable: %s", e)
-        return []
-
-    soup = BeautifulSoup(html, "html.parser")
-    entries: list[dict] = []
-
-    for link in soup.find_all("a", href=True):
-        href = link["href"]
-        if ".pdf" not in href.lower():
-            continue
-        date_match = re.search(r"(\d{4})[-_]?(\d{2})", href)
-        if not date_match:
-            continue
-        try:
-            year = int(date_match.group(1))
-            month = int(date_match.group(2))
-            pub_date = datetime(year, month, 1)
-        except (ValueError, IndexError):
-            continue
-
-        if pub_date.year < start_year or pub_date.year > end_year:
-            continue
-
-        url = href if href.startswith("http") else f"https://www.minneapolisfed.org{href}"
-        entries.append({"date": pub_date, "url": url, "format": "pdf"})
-
-    return sorted(entries, key=lambda e: e["date"])
-
-
-def _fetch_mpls_publication(
-    session: requests.Session, pub_date: datetime, pdf_url: str,
-) -> list[BeigeBookDocument]:
-    """Fetch and split a Minneapolis archive PDF into sections."""
-    cache_pdf = _cache_path(pub_date, "full_pdf")
-    cache_pdf = cache_pdf.with_suffix(".pdf")
-
-    if not cache_pdf.exists():
-        resp = _request_with_retry(session, pdf_url)
-        cache_pdf.parent.mkdir(parents=True, exist_ok=True)
-        cache_pdf.write_bytes(resp.content)
-
-    try:
-        full_text = _extract_pdf_text(cache_pdf)
-    except Exception as e:
-        logger.warning("PDF extraction failed for %s: %s", pub_date.date(), e)
-        return []
-
-    if len(full_text) < 200:
-        logger.warning("PDF text too short (%d chars) for %s", len(full_text), pub_date.date())
-        return []
-
-    sections = _split_pdf_into_sections(full_text)
-    docs: list[BeigeBookDocument] = []
-    for section_name, text in sections.items():
-        if section_name == "national_summary":
-            docs.append(BeigeBookDocument(
-                publication_date=pub_date,
-                section_type="national_summary",
-                district=None,
-                url=pdf_url,
-                raw_text=text,
-                source_file=cache_pdf,
-            ))
-        else:
-            docs.append(BeigeBookDocument(
-                publication_date=pub_date,
-                section_type="district_report",
-                district=section_name,
-                url=pdf_url,
-                raw_text=text,
-                source_file=cache_pdf,
-            ))
-
-    return docs
-
+# ---------------------------------------------------------------------------
+# Main orchestrator
+# ---------------------------------------------------------------------------
 
 def fetch_all_beige_books(
-    start_year: int = 1970,
+    start_year: int = 2011,
     end_date: datetime | None = None,
 ) -> list[BeigeBookDocument]:
     """Fetch all Beige Book publications: national + district sections.
 
-    Merges Minneapolis archive (1970-2010) and Fed Board (1996-present).
-    Fed Board takes precedence for overlapping years.
+    Uses Fed archive to discover publication dates, then fetches each
+    section individually via validated URL patterns. Caches extracted
+    text (not raw HTML).
 
     Args:
-        start_year: Earliest year to fetch.
+        start_year: Earliest year to fetch (default 2011, when per-section
+            HTML pages became available).
         end_date: Latest date (default: now).
 
     Returns:
@@ -413,46 +432,30 @@ def fetch_all_beige_books(
         end_date = datetime.now()
 
     session = _get_session()
+
+    # Discover publication dates from archive
+    pub_dates = fetch_archive_dates(session, start_year=start_year, end_date=end_date)
+    logger.info("Found %d Beige Book publications (%d-%s)",
+                len(pub_dates), start_year, end_date.date())
+
     all_docs: list[BeigeBookDocument] = []
-    processed_dates: set[str] = set()
 
-    # 1. Fed Board (1996-present) — preferred source
-    logger.info("Fetching Fed Board Beige Book index...")
-    fed_index = fetch_beige_book_index_fed(session, start_year=max(start_year, 1996))
-    fed_index = [e for e in fed_index if e["date"] <= end_date]
-    logger.info("Fed Board: %d publications found", len(fed_index))
+    for i, pub_date in enumerate(pub_dates):
+        logger.info("Fetching [%d/%d] %s...", i + 1, len(pub_dates), pub_date.date())
 
-    for entry in fed_index:
-        date_key = entry["date"].strftime("%Y%m")
-        if date_key in processed_dates:
-            continue
-        try:
-            docs = _fetch_fed_publication(session, entry["date"], entry["url"])
-            all_docs.extend(docs)
-            processed_dates.add(date_key)
-            logger.info("  %s: %d sections", entry["date"].date(), len(docs))
-        except Exception as e:
-            logger.warning("Failed %s: %s", entry["date"].date(), e)
+        # National summary
+        national = fetch_beige_book_national(session, pub_date)
+        if national is not None:
+            all_docs.append(national)
 
-    # 2. Minneapolis archive (1970-2010) — fills gaps
-    if start_year < 1996:
-        logger.info("Fetching Minneapolis Fed archive index...")
-        mpls_index = fetch_beige_book_index_mpls(
-            session, start_year=start_year, end_year=min(1995, end_date.year),
-        )
-        logger.info("Minneapolis archive: %d PDFs found", len(mpls_index))
+        # District reports
+        districts = fetch_beige_book_districts(session, pub_date)
+        all_docs.extend(districts)
 
-        for entry in mpls_index:
-            date_key = entry["date"].strftime("%Y%m")
-            if date_key in processed_dates:
-                continue
-            try:
-                docs = _fetch_mpls_publication(session, entry["date"], entry["url"])
-                all_docs.extend(docs)
-                processed_dates.add(date_key)
-                logger.info("  %s: %d sections", entry["date"].date(), len(docs))
-            except Exception as e:
-                logger.warning("Failed %s: %s", entry["date"].date(), e)
+        logger.info("  %s: national=%s, districts=%d",
+                     pub_date.date(),
+                     "OK" if national else "FAILED",
+                     len(districts))
 
     logger.info("Total Beige Book sections fetched: %d", len(all_docs))
     return sorted(all_docs, key=lambda d: d.publication_date)
