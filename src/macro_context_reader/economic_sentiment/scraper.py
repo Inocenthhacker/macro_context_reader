@@ -273,16 +273,27 @@ def detect_url_scheme(yyyy_nn: str, session: requests.Session) -> str:
 def parse_monolithic_beige_book(html: str) -> dict[str, str]:
     """Parse a monolithic Beige Book HTML page into national + district sections.
 
-    Monolithic format (2017-2023): one HTML page contains the national summary
-    followed by 12 district sections separated by header elements (<h2>-<h5>,
-    <strong>, <b>) whose text matches a district name.
+    Monolithic format (2017-2023) has two zones:
+      1. "Highlights by Federal Reserve District" — short bullet per district
+         with <strong>DistrictName</strong> headers. IGNORED (too short).
+      2. Full district sections delimited by <h4>Federal Reserve Bank of X</h4>
+         headers, each containing sub-sections (Summary, Employment, Prices, etc.)
+         marked with <strong> tags.
+
+    Strategy:
+      - Find all <h4> tags whose text matches "Federal Reserve Bank of {name}"
+      - National summary = all <p> content before the first such <h4>
+      - District i = all <p> content between h4[i] and h4[i+1] (or end of article)
+      - Some headers have duplication ("Federal Reserve Bank of Federal Reserve
+        Bank of New York") — handled by taking the last regex match.
 
     Returns:
         Dict mapping section names to extracted text:
         {"national_summary": "...", "Boston": "...", "New York": "...", ...}
 
     Raises:
-        ValueError: if main content div not found or fewer than 10 districts detected
+        ValueError: if content container not found, <10 district h4 headers
+            found, or any district has <500 chars of extracted text.
     """
     soup = BeautifulSoup(html, "html.parser")
 
@@ -302,71 +313,80 @@ def parse_monolithic_beige_book(html: str) -> dict[str, str]:
     if content is None:
         raise ValueError("Cannot locate main content in monolithic Beige Book HTML")
 
-    # Build a flat list of (element, tag_name, text) for header detection.
-    # We look for header-like elements whose text matches a district name.
-    _HEADER_TAGS = {"h2", "h3", "h4", "h5", "strong", "b"}
+    # --- Step 1: Find <h4> headers matching "Federal Reserve Bank of X" ---
+    _FRB_RE = re.compile(r"Federal Reserve Bank of (.+?)$", re.IGNORECASE)
 
-    # Collect paragraph boundaries: list of (district_or_national, [paragraph_texts])
-    sections: dict[str, list[str]] = {}
-    current_section = "national_summary"
-    sections[current_section] = []
-
-    # Track which elements we've already assigned to a district header
-    # to avoid double-counting from nested tags (e.g. <h3><strong>Boston</strong></h3>)
-    header_elements_seen: set[int] = set()
-
-    for element in content.descendants:
-        if element.name is None:
+    district_headers: list[tuple[BeautifulSoup, str]] = []  # (h4_element, district_name)
+    for h4 in content.find_all("h4"):
+        text = h4.get_text(strip=True)
+        # Some pages duplicate: "Federal Reserve Bank of Federal Reserve Bank of New York"
+        # Strip all "Federal Reserve Bank of" prefixes to get the bare district name.
+        if "Federal Reserve Bank of" not in text:
             continue
+        raw_name = text
+        while "Federal Reserve Bank of" in raw_name:
+            raw_name = raw_name.split("Federal Reserve Bank of", 1)[1].strip()
 
-        el_id = id(element)
+        # Match to canonical district name
+        matched = None
+        for known in ALL_DISTRICTS:
+            if raw_name.lower().replace(".", "") == known.lower().replace(".", ""):
+                matched = known
+                break
+        if matched is not None:
+            district_headers.append((h4, matched))
 
-        # Check if this element is a district header
-        if element.name in _HEADER_TAGS and el_id not in header_elements_seen:
-            text = element.get_text(strip=True)
-            matched_district = None
-            for district in ALL_DISTRICTS:
-                if (text == district
-                        or text == f"Federal Reserve Bank of {district}"
-                        or text.startswith(f"{district}\n")
-                        or text.startswith(f"{district}:")):
-                    matched_district = district
-                    break
+    if len(district_headers) < 10:
+        raise ValueError(
+            f"Only {len(district_headers)}/12 district <h4> headers found in "
+            f"monolithic HTML. Found: {[d for _, d in district_headers]}. "
+            f"Page structure may have changed."
+        )
 
-            if matched_district and matched_district not in sections:
-                current_section = matched_district
+    # --- Step 2: Build a flat ordered list of all <p> and <h4> elements ---
+    # Walking descendants once is cheaper than repeated find_next_sibling chains
+    # which break on nested structures.
+    ordered_elements: list = []
+    h4_set = {id(h4) for h4, _ in district_headers}
+    for elem in content.descendants:
+        if elem.name == "p":
+            ordered_elements.append(("p", elem))
+        elif elem.name == "h4" and id(elem) in h4_set:
+            ordered_elements.append(("h4", elem))
+
+    # Map h4 element id → district name for quick lookup
+    h4_to_district = {id(h4): name for h4, name in district_headers}
+
+    # --- Step 3: Partition <p> elements between h4 boundaries ---
+    sections: dict[str, list[str]] = {"national_summary": []}
+    current_section = "national_summary"
+
+    for tag_type, elem in ordered_elements:
+        if tag_type == "h4":
+            current_section = h4_to_district[id(elem)]
+            if current_section not in sections:
                 sections[current_section] = []
-                # Mark this element and all ancestors up to content as seen
-                # to prevent nested matches
-                node = element
-                while node and node is not content:
-                    header_elements_seen.add(id(node))
-                    node = node.parent
-                continue
-
-        # Accumulate paragraph text (only <p> to avoid duplication)
-        if element.name == "p":
-            para_text = element.get_text(" ", strip=True)
+        else:  # "p"
+            para_text = elem.get_text(" ", strip=True)
             if len(para_text) > 20:
                 sections[current_section].append(para_text)
 
-    # Merge paragraph lists into strings
+    # --- Step 4: Merge and validate ---
     result: dict[str, str] = {}
     for section_name, paragraphs in sections.items():
-        joined = "\n".join(paragraphs)
-        if joined.strip():
-            result[section_name] = joined.strip()
+        joined = "\n".join(paragraphs).strip()
+        if joined:
+            result[section_name] = joined
 
-    # Validation: expect at least 10 of 12 districts
-    districts_found = sum(
-        1 for d in ALL_DISTRICTS
-        if d in result and len(result[d]) > 100
-    )
-    if districts_found < 10:
-        raise ValueError(
-            f"Only {districts_found}/12 districts extracted from monolithic HTML. "
-            f"Structure may have changed. Sections found: {list(result.keys())}"
-        )
+    for district in ALL_DISTRICTS:
+        text_len = len(result.get(district, ""))
+        if text_len < 500:
+            raise ValueError(
+                f"District '{district}' extracted with insufficient text: "
+                f"{text_len} chars (minimum 500). "
+                f"Sections found: {list(result.keys())}. "
+                f"Page structure may have changed."
+            )
 
     return result
 

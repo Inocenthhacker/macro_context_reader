@@ -311,25 +311,55 @@ class TestClearCache:
 
 class TestParseMonolithicBeigeBook:
     @staticmethod
-    def _make_monolithic_html(districts: list[str] | None = None) -> str:
-        """Build a synthetic monolithic Beige Book HTML page."""
+    def _make_monolithic_html(
+        districts: list[str] | None = None,
+        *,
+        include_highlights: bool = False,
+    ) -> str:
+        """Build synthetic monolithic Beige Book HTML matching real Fed structure.
+
+        Real structure:
+          - National paragraphs at top
+          - Optional "Highlights" section with <strong>DistrictName</strong> (short)
+          - <h4>Federal Reserve Bank of X</h4> per district (full content)
+        """
         if districts is None:
             districts = list(ALL_DISTRICTS)
-        paras = "".join(
+
+        # National summary paragraphs
+        national_paras = "".join(
             f"<p>{'Economic activity expanded moderately across all districts. ' * 5}</p>"
-            for _ in range(3)
+            for _ in range(4)
         )
-        national = f"<h3>Summary of Commentary on Current Economic Conditions</h3>{paras}"
+
+        # Optional Highlights section (the trap — should be skipped)
+        highlights = ""
+        if include_highlights:
+            highlights = "<h3>Highlights by Federal Reserve District</h3>"
+            for d in districts:
+                highlights += (
+                    f"<p><strong>{d}</strong> — Activity was modest.</p>"
+                )
+
+        # Full district sections with <h4>Federal Reserve Bank of X</h4>
         district_sections = ""
         for d in districts:
             district_text = "".join(
-                f"<p>The {d} district reported moderate growth in activity. "
+                f"<p>The {d} district reported moderate growth in economic activity. "
                 f"Manufacturing expanded and employment rose steadily. "
-                f"Consumer spending remained solid throughout the period.</p>"
-                for _ in range(3)
+                f"Consumer spending remained solid throughout the reporting period. "
+                f"Contacts noted ongoing tightness in labor markets across sectors.</p>"
+                for _ in range(5)
             )
-            district_sections += f"<h3>{d}</h3>{district_text}"
-        return f'<html><body><div id="article">{national}{district_sections}</div></body></html>'
+            district_sections += (
+                f"<h4>Federal Reserve Bank of {d}</h4>{district_text}"
+            )
+
+        return (
+            f'<html><body><div id="article">'
+            f'{national_paras}{highlights}{district_sections}'
+            f'</div></body></html>'
+        )
 
     def test_extracts_all_12_districts(self) -> None:
         html = self._make_monolithic_html()
@@ -337,16 +367,29 @@ class TestParseMonolithicBeigeBook:
         assert "national_summary" in sections
         for district in ALL_DISTRICTS:
             assert district in sections, f"Missing district: {district}"
-            assert len(sections[district]) > 100
+            assert len(sections[district]) > 500
 
     def test_national_summary_before_first_district(self) -> None:
         html = self._make_monolithic_html()
         sections = parse_monolithic_beige_book(html)
         assert "Economic activity" in sections["national_summary"]
 
+    def test_skips_highlights_section(self) -> None:
+        """Highlights with <strong>Boston</strong> must NOT steal content."""
+        html = self._make_monolithic_html(include_highlights=True)
+        sections = parse_monolithic_beige_book(html)
+        # Every district should have substantial content from the h4 section,
+        # NOT the short highlights paragraph.
+        for district in ALL_DISTRICTS:
+            assert district in sections, f"Missing: {district}"
+            assert len(sections[district]) > 500, (
+                f"{district} too short ({len(sections[district])} chars) — "
+                f"parser may be matching Highlights instead of h4 headers"
+            )
+
     def test_fails_on_too_few_districts(self) -> None:
         html = self._make_monolithic_html(districts=["Boston", "New York"])
-        with pytest.raises(ValueError, match="districts extracted"):
+        with pytest.raises(ValueError, match="district.*h4.*headers found"):
             parse_monolithic_beige_book(html)
 
     def test_fails_on_no_content_div(self) -> None:
@@ -354,26 +397,31 @@ class TestParseMonolithicBeigeBook:
         with pytest.raises(ValueError, match="Cannot locate"):
             parse_monolithic_beige_book(html)
 
-    def test_handles_federal_reserve_bank_of_prefix(self) -> None:
-        """Headers like 'Federal Reserve Bank of Boston' should also match."""
+    def test_handles_duplicated_frb_prefix(self) -> None:
+        """Some pages have 'Federal Reserve Bank of Federal Reserve Bank of New York'."""
         paras = "".join(
             f"<p>{'Economic activity expanded moderately across all districts. ' * 5}</p>"
-            for _ in range(3)
+            for _ in range(4)
         )
-        national = f"<h3>Summary</h3>{paras}"
         district_sections = ""
         for d in ALL_DISTRICTS:
+            # Deliberately duplicate the prefix for one district
+            if d == "New York":
+                header = f"<h4>Federal Reserve Bank of Federal Reserve Bank of {d}</h4>"
+            else:
+                header = f"<h4>Federal Reserve Bank of {d}</h4>"
             district_text = "".join(
-                f"<p>The {d} district reported moderate growth over the period. "
-                f"Manufacturing sector expanded and employment rose steadily. "
-                f"Consumer spending remained solid throughout the reporting period.</p>"
-                for _ in range(3)
+                f"<p>The {d} district reported moderate growth in economic activity. "
+                f"Manufacturing expanded and employment rose steadily. "
+                f"Consumer spending remained solid throughout the reporting period. "
+                f"Contacts noted ongoing tightness in labor markets across sectors.</p>"
+                for _ in range(5)
             )
-            district_sections += f"<h3>Federal Reserve Bank of {d}</h3>{district_text}"
-        html = f'<html><body><div id="article">{national}{district_sections}</div></body></html>'
+            district_sections += f"{header}{district_text}"
+        html = f'<html><body><div id="article">{paras}{district_sections}</div></body></html>'
         sections = parse_monolithic_beige_book(html)
-        for district in ALL_DISTRICTS:
-            assert district in sections, f"Missing: {district}"
+        assert "New York" in sections, "Duplicated FRB prefix should still match"
+        assert len(sections["New York"]) > 500
 
 
 # ---------------------------------------------------------------------------
@@ -507,8 +555,17 @@ def test_detect_url_scheme_2019_is_monolithic() -> None:
 
 
 @pytest.mark.integration
-def test_parse_monolithic_extracts_all_districts_real_2019() -> None:
-    """Integration: fetch real 2019-01 Beige Book and verify all 12 districts parsed."""
+def test_parse_monolithic_2019_01_all_districts_complete() -> None:
+    """Empirical: 2019-01 Beige Book has all 12 districts with substantial content.
+
+    Each district should have >2000 chars (full report with sub-sections),
+    NOT 200-500 chars (which would indicate the parser caught the short
+    Highlights section instead of the full <h4>Federal Reserve Bank of X</h4>
+    sections).
+
+    Boston should contain sub-section headers like "Summary of Economic Activity",
+    "Employment and Wages", "Prices".
+    """
     import requests as req
     url = "https://www.federalreserve.gov/monetarypolicy/beigebook201901.htm"
     resp = req.get(url, timeout=30, headers={"User-Agent": "MacroContextReader/1.0"})
@@ -516,12 +573,20 @@ def test_parse_monolithic_extracts_all_districts_real_2019() -> None:
     sections = parse_monolithic_beige_book(resp.text)
 
     assert "national_summary" in sections
-    assert len(sections["national_summary"]) > 500, (
+    assert len(sections["national_summary"]) > 1500, (
         f"National summary too short: {len(sections['national_summary'])} chars"
     )
 
     for district in ALL_DISTRICTS:
         assert district in sections, f"Missing district: {district}"
-        assert len(sections[district]) > 200, (
-            f"District {district} text too short: {len(sections[district])} chars"
+        text_len = len(sections[district])
+        assert text_len > 2000, (
+            f"{district} too short: {text_len} chars (expected >2000). "
+            f"Parser may be matching Highlights instead of h4 headers."
         )
+
+    # Boston should contain sub-section content
+    boston = sections["Boston"]
+    assert "Summary of Economic Activity" in boston or "economic activity" in boston.lower()
+    assert "Employment" in boston
+    assert "Prices" in boston
