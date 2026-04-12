@@ -1,4 +1,4 @@
-"""Tests for rhetoric pipeline — PRD-101 CC-1.
+"""Tests for rhetoric pipeline — PRD-101 CC-1, PRD-101/CC-1-FIX7.
 
 Tests orchestration logic with fully mocked scorers and scraper.
 """
@@ -125,3 +125,62 @@ class TestPipelineOrchestration:
             )
         assert isinstance(df, pd.DataFrame)
         assert len(df) == 0
+
+    def test_default_scorers_exclude_finbert(self) -> None:
+        """Default scorer list should not include finbert_fomc."""
+        from macro_context_reader.rhetoric import pipeline as pipe_mod
+        # Call with default (None) and check the names list logic
+        # We mock the actual imports to avoid loading real models
+        with patch("macro_context_reader.rhetoric.scorers.fomc_roberta.FOMCRobertaScorer") as mock_r, \
+             patch("macro_context_reader.rhetoric.scorers.llama_deepinfra.LlamaDeepInfraScorer") as mock_l:
+            mock_r.return_value = MagicMock(name="fomc_roberta")
+            mock_l.return_value = MagicMock(name="llama_deepinfra")
+            scorers = pipe_mod._load_scorers(None)
+        assert "fomc_roberta" in scorers
+        assert "llama_deepinfra" in scorers
+        assert "finbert_fomc" not in scorers
+
+    def test_pipeline_handles_legacy_parquet_with_finbert(self, tmp_path) -> None:
+        """Legacy parquet with finbert_fomc_net column is read but column is dropped on write."""
+        from macro_context_reader.rhetoric import pipeline as pipe_mod
+
+        # Create a legacy parquet with finbert_fomc_net column
+        legacy_df = pd.DataFrame([{
+            "date": datetime(2024, 1, 31),
+            "doc_type": "statement",
+            "doc_url": "https://fed.gov/old",
+            "doc_title": "Legacy Statement",
+            "n_sentences": 10,
+            "ensemble_net": 0.3,
+            "cosine_sim": 0.7,
+            "weighted_score": 0.21,
+            "agreement_rate": 0.8,
+            "confidence": "HIGH",
+            "fomc_roberta_net": 0.4,
+            "finbert_fomc_net": 0.2,  # legacy column
+            "llama_deepinfra_net": 0.3,
+        }])
+        output = tmp_path / "legacy_scores.parquet"
+        legacy_df.to_parquet(output, index=False)
+
+        # New doc to score
+        new_doc = _fake_doc("2024-06-15")
+        fake_scorer = MagicMock()
+        fake_scorer.name = "mock"
+        fake_scorer.score_sentences.return_value = [_fake_sentence_score("hawkish", 0)]
+        fake_scorer.score_document_sentences.return_value = _fake_doc_score("mock")
+
+        with patch.dict(pipe_mod.FETCHER_MAP, {"statement": MagicMock(return_value=[new_doc])}), \
+             patch.object(pipe_mod, "_load_scorers", return_value={"mock": fake_scorer}), \
+             patch.object(pipe_mod, "preprocess_document", return_value=["S1."]), \
+             patch.object(pipe_mod, "compute_matched_filter_weight", return_value=0.7):
+            df = pipe_mod.run_full_pipeline(
+                start_year=2024, doc_types=["statement"], output_path=output,
+            )
+
+        assert len(df) == 2  # legacy + new
+        assert "finbert_fomc_net" not in df.columns  # dropped on write
+
+        # Verify the saved parquet also lacks the column
+        saved = pd.read_parquet(output)
+        assert "finbert_fomc_net" not in saved.columns

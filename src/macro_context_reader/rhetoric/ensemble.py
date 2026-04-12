@@ -1,14 +1,18 @@
 """Ensemble scoring — PRD-101 CC-1.
 
-Combines outputs from multiple scorers (FOMC-RoBERTa, FinBERT-FOMC,
-Llama DeepInfra) into a single EnsembleScore with matched-filter weighting.
+Combines outputs from FOMC-RoBERTa and Llama DeepInfra into a single
+EnsembleScore with matched-filter weighting.
 
-Agreement confidence:
-  HIGH:   >= 70% sentences where all models agree on label
-  MEDIUM: >= 50% agreement
-  LOW:    < 50% agreement
+FinBERT-FOMC removed 2026-04-12: 20% empirical accuracy on FOMC
+hawkish/dovish classification. Sentiment != policy stance.
+See debug_llama_disagreement.py for validation data.
 
-Refs: PRD-101 CC-1
+Agreement confidence (2-model):
+  HIGH:   both models agree on same label
+  MEDIUM: one neutral, other directional (hawkish or dovish)
+  LOW:    opposite directional labels (hawkish vs dovish) — critical flag
+
+Refs: PRD-101 CC-1, PRD-101/CC-1-FIX7
 """
 
 from __future__ import annotations
@@ -25,6 +29,15 @@ from macro_context_reader.rhetoric.schemas import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Empirical weights from debug_llama_disagreement.py (2026-04-12):
+# - FOMC-RoBERTa: 100% on 5 test sentences (Shah et al. ACL 2023, purpose-trained)
+# - Llama 3.3 70B: 80% on same tests (contextual reasoning, zero-shot)
+# Weights reflect accuracy ratio + trust in domain-specific training
+ENSEMBLE_WEIGHTS: dict[str, float] = {
+    "fomc_roberta": 0.6,
+    "llama_deepinfra": 0.4,
+}
 
 
 def _compute_agreement_rate(
@@ -51,10 +64,40 @@ def _compute_agreement_rate(
     return agree_count / n_sentences
 
 
-def _agreement_confidence(rate: float) -> Literal["HIGH", "MEDIUM", "LOW"]:
-    if rate >= 0.70:
+def _agreement_confidence_2model(
+    scores_by_model: dict[str, list[SentenceScore]],
+) -> Literal["HIGH", "MEDIUM", "LOW"]:
+    """2-model agreement logic.
+
+    HIGH:   both agree exactly (same label)
+    MEDIUM: one neutral, other directional (hawkish or dovish)
+    LOW:    opposite directional labels (hawkish vs dovish) — critical flag
+    """
+    model_names = list(scores_by_model.keys())
+    if len(model_names) < 2:
         return "HIGH"
-    elif rate >= 0.50:
+
+    n_sentences = len(scores_by_model[model_names[0]])
+    if n_sentences == 0:
+        return "LOW"
+
+    n_agree = 0
+    n_opposite = 0
+    for i in range(n_sentences):
+        labels = set()
+        for name in model_names:
+            if i < len(scores_by_model[name]):
+                labels.add(scores_by_model[name][i].label)
+        if len(labels) == 1:
+            n_agree += 1
+        elif "hawkish" in labels and "dovish" in labels:
+            n_opposite += 1
+
+    if n_opposite > 0 and n_opposite >= n_sentences * 0.3:
+        return "LOW"
+    if n_agree / n_sentences >= 0.70:
+        return "HIGH"
+    if n_agree / n_sentences >= 0.50:
         return "MEDIUM"
     return "LOW"
 
@@ -77,9 +120,19 @@ def compute_ensemble_score(
         EnsembleScore with weighted and unweighted aggregations.
     """
     net_scores = {name: ds.net_score for name, ds in doc_scores.items()}
-    ensemble_net = sum(net_scores.values()) / len(net_scores) if net_scores else 0.0
+
+    # Weighted ensemble: use ENSEMBLE_WEIGHTS for known scorers,
+    # fall back to equal weight for any ad-hoc scorers
+    total_weight = 0.0
+    weighted_sum = 0.0
+    for name, net in net_scores.items():
+        w = ENSEMBLE_WEIGHTS.get(name, 1.0 / len(net_scores))
+        weighted_sum += w * net
+        total_weight += w
+    ensemble_net = weighted_sum / total_weight if total_weight > 0 else 0.0
 
     agreement_rate = _compute_agreement_rate(sentence_scores)
+    confidence = _agreement_confidence_2model(sentence_scores)
 
     return EnsembleScore(
         doc_date=doc.date,
@@ -92,5 +145,5 @@ def compute_ensemble_score(
         cosine_similarity=round(cosine_similarity, 4),
         weighted_net_score=round(ensemble_net * cosine_similarity, 4),
         agreement_rate=round(agreement_rate, 4),
-        agreement_confidence=_agreement_confidence(agreement_rate),
+        agreement_confidence=confidence,
     )

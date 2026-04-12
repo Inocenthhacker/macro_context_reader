@@ -1,5 +1,16 @@
 """FinBERT-FOMC scorer — PRD-101 CC-1.
 
+NOTE: NOT USED in FOMC Rhetoric Ensemble (removed 2026-04-12).
+Empirical accuracy on FOMC hawkish/dovish classification: 20% (1/5).
+Structural limitation: trained on general financial sentiment,
+inverts on policy-change language where "eased" sentiment !=
+"dovish" policy stance (e.g., "inflation has eased" is hawkish
+context for Fed even though sentiment is negative).
+
+Reused in: macro_context_reader.economic_sentiment module for
+Beige Book and descriptive economic text analysis, where sentiment
+correctly maps to economic conditions (not policy stance).
+
 Wrapper for ZiweiChen/FinBERT-FOMC.
 
 Label mapping (FinBERT-FOMC ZiweiChen):
@@ -12,7 +23,8 @@ Label mapping (FinBERT-FOMC ZiweiChen):
   justifies easing (dovish stance). This interpretation is validated
   empirically via integration test on known hawkish/dovish sentences.
 
-Refs: PRD-101 CC-1, Kim et al. (ICAIF 2024)
+Refs: PRD-101 CC-1, Kim et al. (ICAIF 2024),
+      debug_llama_disagreement.py (2026-04-12)
 """
 
 from __future__ import annotations

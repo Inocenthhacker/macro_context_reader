@@ -1,9 +1,11 @@
 """FOMC Rhetoric Scoring Pipeline — PRD-101 CC-1.
 
-Orchestrator: scrape → preprocess → score (3 models) → matched-filter → ensemble.
+Orchestrator: scrape → preprocess → score (2 models) → matched-filter → ensemble.
+Active scorers: FOMC-RoBERTa (0.6 weight) + Llama DeepInfra (0.4 weight).
+FinBERT-FOMC removed from default ensemble 2026-04-12 (20% accuracy on FOMC text).
 Persists results as Parquet. Incremental: skips already-scored documents.
 
-Refs: PRD-101 CC-1
+Refs: PRD-101 CC-1, PRD-101/CC-1-FIX7
 """
 
 from __future__ import annotations
@@ -40,7 +42,9 @@ FETCHER_MAP = {
 def _load_scorers(scorer_names: list[str] | None = None):
     """Lazy-load requested scorers."""
     scorers = {}
-    names = scorer_names or ["fomc_roberta", "finbert_fomc", "llama_deepinfra"]
+    # Default: FOMC-RoBERTa + Llama. FinBERT excluded from FOMC ensemble
+    # (20% accuracy, see PRD-101/CC-1-FIX7). Still loadable via explicit name.
+    names = scorer_names or ["fomc_roberta", "llama_deepinfra"]
 
     if "fomc_roberta" in names:
         from macro_context_reader.rhetoric.scorers.fomc_roberta import FOMCRobertaScorer
@@ -180,6 +184,13 @@ def run_full_pipeline(
 
     if not combined.empty:
         combined = combined.sort_values("date").reset_index(drop=True)
+
+        # Backward compat: drop legacy finbert_fomc_net from output
+        # (kept in memory during concat for audit, dropped before write)
+        if "finbert_fomc_net" in combined.columns:
+            logger.info("Dropping legacy finbert_fomc_net column from output")
+            combined = combined.drop(columns=["finbert_fomc_net"])
+
         output_path.parent.mkdir(parents=True, exist_ok=True)
         combined.to_parquet(output_path, index=False)
         logger.info("Saved %d total scores to %s", len(combined), output_path)
