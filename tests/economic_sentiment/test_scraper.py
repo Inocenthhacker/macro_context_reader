@@ -32,19 +32,23 @@ class TestBuildUrl:
 
     def test_district_report(self) -> None:
         url = _build_url(datetime(2026, 1, 15), "district_report", "New York")
-        assert url == "https://www.federalreserve.gov/monetarypolicy/beigebook202601-newyork.htm"
+        assert url == "https://www.federalreserve.gov/monetarypolicy/beigebook202601-new-york.htm"
 
     def test_district_st_louis(self) -> None:
         url = _build_url(datetime(2024, 3, 1), "district_report", "St. Louis")
-        assert "stlouis" in url
+        assert "st-louis" in url
 
     def test_district_kansas_city(self) -> None:
         url = _build_url(datetime(2024, 3, 1), "district_report", "Kansas City")
-        assert "kansascity" in url
+        assert "kansas-city" in url
 
     def test_district_san_francisco(self) -> None:
         url = _build_url(datetime(2024, 3, 1), "district_report", "San Francisco")
-        assert "sanfrancisco" in url
+        assert "san-francisco" in url
+
+    def test_district_new_york(self) -> None:
+        url = _build_url(datetime(2024, 3, 1), "district_report", "New York")
+        assert "new-york" in url
 
     def test_raises_on_unknown_district(self) -> None:
         with pytest.raises(ValueError, match="Unknown district"):
@@ -256,3 +260,37 @@ class TestClearCache:
 
         assert cache_dir.exists()
         assert list(cache_dir.iterdir()) == []
+
+
+# ---------------------------------------------------------------------------
+# Integration tests — require network access
+# ---------------------------------------------------------------------------
+
+@pytest.mark.integration
+def test_all_district_urls_valid_empirically() -> None:
+    """Validate all 12 district slugs by HEAD request to Fed Board.
+
+    Uses January 2026 publication (beigebook202601-{slug}.htm).
+    All 12 must return HTTP 200.
+    """
+    import requests as req
+
+    base = "https://www.federalreserve.gov/monetarypolicy/beigebook202601"
+    failed = []
+    for district, slug in DISTRICT_URL_SLUGS.items():
+        url = f"{base}-{slug}.htm"
+        resp = req.head(url, timeout=10, allow_redirects=True)
+        if resp.status_code != 200:
+            failed.append((district, slug, url, resp.status_code))
+
+    assert not failed, f"District URLs returned non-200: {failed}"
+
+
+@pytest.mark.integration
+def test_national_summary_url_valid_empirically() -> None:
+    """Validate national summary URL pattern returns HTTP 200."""
+    import requests as req
+
+    url = "https://www.federalreserve.gov/monetarypolicy/beigebook202601-summary.htm"
+    resp = req.head(url, timeout=10, allow_redirects=True)
+    assert resp.status_code == 200, f"National summary URL returned {resp.status_code}"

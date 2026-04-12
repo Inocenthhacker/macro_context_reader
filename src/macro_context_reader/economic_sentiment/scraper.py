@@ -51,17 +51,17 @@ ALL_DISTRICTS = [
 # URL slug for each district (empirically validated)
 DISTRICT_URL_SLUGS: dict[str, str] = {
     "Boston": "boston",
-    "New York": "newyork",
+    "New York": "new-york",
     "Philadelphia": "philadelphia",
     "Cleveland": "cleveland",
     "Richmond": "richmond",
     "Atlanta": "atlanta",
     "Chicago": "chicago",
-    "St. Louis": "stlouis",
+    "St. Louis": "st-louis",
     "Minneapolis": "minneapolis",
-    "Kansas City": "kansascity",
+    "Kansas City": "kansas-city",
     "Dallas": "dallas",
-    "San Francisco": "sanfrancisco",
+    "San Francisco": "san-francisco",
 }
 
 # Regex to extract YYYYMM from beigebook URLs
