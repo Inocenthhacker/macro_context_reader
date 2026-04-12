@@ -58,7 +58,7 @@ def run_full_pipeline(
       5. Output DataFrame + Parquet
 
     Args:
-        start_year: Earliest year (default: 2017, enforced by MIN_SUPPORTED_YEAR).
+        start_year: Earliest year (default: 2011, enforced by MIN_SUPPORTED_YEAR).
         end_date: Latest date (default: now).
         force_refetch: If True, re-scrape even if cached.
         output_path: Path for output Parquet.
