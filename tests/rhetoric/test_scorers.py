@@ -127,3 +127,77 @@ class TestFinBERTFOMC:
         from macro_context_reader.rhetoric.scorers.finbert_fomc import FinBERTFOMCScorer
         scorer = FinBERTFOMCScorer(device="cpu")
         assert scorer.name == "finbert_fomc"
+
+
+# ---------------------------------------------------------------------------
+# Integration tests — require real models / API keys
+# ---------------------------------------------------------------------------
+
+HAWKISH_SENTENCE = "The Committee will continue raising rates to combat inflation."
+
+
+@pytest.mark.integration
+@needs_torch
+def test_fomc_roberta_real_inference() -> None:
+    """Load real FOMC-RoBERTa and verify hawkish sentence is classified correctly."""
+    from macro_context_reader.rhetoric.scorers.fomc_roberta import FOMCRobertaScorer
+
+    scorer = FOMCRobertaScorer(device="cpu", batch_size=1)
+    results = scorer.score_sentences([HAWKISH_SENTENCE])
+
+    assert len(results) == 1
+    r = results[0]
+    assert r.label == "hawkish", (
+        f"Expected 'hawkish', got '{r.label}' "
+        f"(H={r.score_hawkish:.3f}, D={r.score_dovish:.3f}, N={r.score_neutral:.3f})"
+    )
+    assert r.score_hawkish > 0.5, f"Hawkish prob too low: {r.score_hawkish:.3f}"
+
+
+@pytest.mark.integration
+@needs_torch
+def test_finbert_fomc_real_inference() -> None:
+    """Load real FinBERT-FOMC and verify label mapping is correct.
+
+    Critical: FinBERT-FOMC uses a different id2label than FOMC-RoBERTa.
+    This test catches mapping errors that would silently invert signals.
+    """
+    from macro_context_reader.rhetoric.scorers.finbert_fomc import FinBERTFOMCScorer
+
+    scorer = FinBERTFOMCScorer(device="cpu", batch_size=1)
+    results = scorer.score_sentences([HAWKISH_SENTENCE])
+
+    assert len(results) == 1
+    r = results[0]
+    assert r.label == "hawkish", (
+        f"Expected 'hawkish', got '{r.label}' — "
+        f"label mapping may be inverted. "
+        f"(H={r.score_hawkish:.3f}, D={r.score_dovish:.3f}, N={r.score_neutral:.3f}). "
+        f"Check model.config.id2label against _label_map in finbert_fomc.py."
+    )
+    assert r.score_hawkish > r.score_dovish, "Hawkish prob should exceed dovish"
+
+
+@pytest.mark.integration
+def test_llama_deepinfra_real_call() -> None:
+    """Make one real DeepInfra API call and verify JSON structure + cost.
+
+    Requires DEEPINFRA_API_KEY in environment.
+    """
+    import os
+    if not os.environ.get("DEEPINFRA_API_KEY"):
+        pytest.skip("DEEPINFRA_API_KEY not set")
+
+    from macro_context_reader.rhetoric.scorers.llama_deepinfra import LlamaDeepInfraScorer
+
+    scorer = LlamaDeepInfraScorer(max_budget_usd=0.10)
+    results = scorer.score_sentences([HAWKISH_SENTENCE])
+
+    assert len(results) == 1
+    r = results[0]
+    assert r.label in ("hawkish", "dovish", "neutral"), f"Unexpected label: {r.label}"
+    assert 0.0 <= r.confidence <= 1.0
+    # Cost for 1 sentence should be negligible
+    assert scorer.budget.spent_usd < 0.01, (
+        f"Cost too high for 1 sentence: ${scorer.budget.spent_usd:.4f}"
+    )
