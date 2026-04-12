@@ -20,8 +20,11 @@ from macro_context_reader.rhetoric.schemas import DocumentScore, SentenceScore
 logger = logging.getLogger(__name__)
 
 MODEL_ID = "gtfintechlab/FOMC-RoBERTa"
-# FOMC-RoBERTa label mapping: 0=hawkish, 1=dovish, 2=neutral
-LABEL_MAP = {0: "hawkish", 1: "dovish", 2: "neutral"}
+# FOMC-RoBERTa label mapping per Shah et al. (ACL 2023):
+# 0=Dovish, 1=Hawkish, 2=Neutral
+# Reference: https://quantpedia.com/language-analysis-of-federal-open-market-committee-minutes/
+# "sentences were categorized into three classes (0: Dovish, 1: Hawkish, and 2: Neutral)"
+LABEL_MAP = {0: "dovish", 1: "hawkish", 2: "neutral"}
 
 
 class FOMCRobertaScorer:
@@ -67,7 +70,8 @@ class FOMCRobertaScorer:
                 # Normalize first, then clip for floating-point precision safety
                 prob = prob / prob.sum()
                 prob = np.clip(prob, 0.0, 1.0)
-                h, d, n = float(prob[0]), float(prob[1]), float(prob[2])
+                # prob indices follow LABEL_MAP: [0]=dovish, [1]=hawkish, [2]=neutral
+                d, h, n = float(prob[0]), float(prob[1]), float(prob[2])
                 assert 0.0 <= h <= 1.0, f"h out of range: {h}"
                 assert 0.0 <= d <= 1.0, f"d out of range: {d}"
                 assert 0.0 <= n <= 1.0, f"n out of range: {n}"

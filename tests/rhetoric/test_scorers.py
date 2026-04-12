@@ -254,6 +254,42 @@ def test_llama_deepinfra_real_call() -> None:
 
 @pytest.mark.integration
 @needs_torch
+def test_fomc_roberta_label_mapping_empirical() -> None:
+    """Validate that LABEL_MAP is correct per Shah et al. ACL 2023.
+
+    Tests 4 clear cases:
+    - Hawkish: 'The Committee will raise rates to combat inflation.' -> hawkish
+    - Dovish: 'The Committee will cut rates to support employment.' -> dovish
+    - Hawkish forward: 'Ongoing rate increases will be appropriate.' -> hawkish
+    - Dovish risk: 'Downside risks to employment have increased.' -> dovish
+    """
+    from macro_context_reader.rhetoric.scorers.fomc_roberta import FOMCRobertaScorer
+
+    scorer = FOMCRobertaScorer(device="cpu", batch_size=4)
+
+    test_cases = [
+        ("The Committee will continue to raise rates to combat inflation.", "hawkish"),
+        ("The Committee will cut rates to support employment.", "dovish"),
+        ("The Committee anticipates that ongoing increases in the target range will be appropriate.", "hawkish"),
+        ("The Committee judges that downside risks to employment have increased.", "dovish"),
+    ]
+
+    sentences = [tc[0] for tc in test_cases]
+    expected = [tc[1] for tc in test_cases]
+
+    scores = scorer.score_sentences(sentences)
+    actual = [s.label for s in scores]
+
+    correct = sum(1 for a, e in zip(actual, expected) if a == e)
+    assert correct >= 3, (
+        f"FOMC-RoBERTa mapping fails empirical validation: {correct}/4 correct. "
+        f"Expected {expected}, got {actual}. "
+        f"This indicates LABEL_MAP is incorrect."
+    )
+
+
+@pytest.mark.integration
+@needs_torch
 def test_finbert_fomc_label_mapping_empirical() -> None:
     """Validate Positive->hawkish, Negative->dovish on known sentences.
 
