@@ -26,7 +26,8 @@ from macro_context_reader.rhetoric.schemas import FOMCDocument
 
 logger = logging.getLogger(__name__)
 
-CACHE_DIR = Path("data/rhetoric/raw")
+_REPO_ROOT = Path(__file__).resolve().parents[3]  # src/macro_context_reader/rhetoric/ -> repo root
+CACHE_DIR = _REPO_ROOT / "data" / "rhetoric" / "raw"
 BASE_URL = "https://www.federalreserve.gov"
 CALENDAR_URL = f"{BASE_URL}/monetarypolicy/fomccalendars.htm"
 SPEECHES_URL = f"{BASE_URL}/newsevents/speeches.htm"
@@ -74,6 +75,7 @@ def _load_or_fetch(
         return cache.read_text(encoding="utf-8")
     resp = _request_with_retry(session, url)
     text = resp.text
+    cache.parent.mkdir(parents=True, exist_ok=True)
     cache.write_text(text, encoding="utf-8")
     return text
 
