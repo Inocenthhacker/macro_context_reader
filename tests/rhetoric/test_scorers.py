@@ -128,6 +128,14 @@ class TestFinBERTFOMC:
         scorer = FinBERTFOMCScorer(device="cpu")
         assert scorer.name == "finbert_fomc"
 
+    @needs_torch
+    def test_label_map_covers_positive_negative(self) -> None:
+        """FINBERT_FOMC_LABEL_MAP must map Positive->hawkish, Negative->dovish."""
+        from macro_context_reader.rhetoric.scorers.finbert_fomc import FINBERT_FOMC_LABEL_MAP
+        assert FINBERT_FOMC_LABEL_MAP["positive"] == "hawkish"
+        assert FINBERT_FOMC_LABEL_MAP["negative"] == "dovish"
+        assert FINBERT_FOMC_LABEL_MAP["neutral"] == "neutral"
+
 
 # ---------------------------------------------------------------------------
 # Integration tests — require real models / API keys
@@ -241,4 +249,40 @@ def test_llama_deepinfra_real_call() -> None:
     # Cost for 1 sentence should be negligible
     assert scorer.budget.spent_usd < 0.01, (
         f"Cost too high for 1 sentence: ${scorer.budget.spent_usd:.4f}"
+    )
+
+
+@pytest.mark.integration
+@needs_torch
+def test_finbert_fomc_label_mapping_empirical() -> None:
+    """Validate Positive->hawkish, Negative->dovish on known sentences.
+
+    Must get at least 1/2 correct per class — catches silent all-neutral bug.
+    """
+    from macro_context_reader.rhetoric.scorers.finbert_fomc import FinBERTFOMCScorer
+
+    scorer = FinBERTFOMCScorer(device="cpu", batch_size=4)
+
+    hawkish_sentences = [
+        "The Committee will continue to raise rates to combat inflation.",
+        "Inflation remains elevated and requires further tightening.",
+    ]
+    dovish_sentences = [
+        "The Committee will cut rates to support employment.",
+        "Economic growth has weakened substantially, warranting accommodation.",
+    ]
+
+    h_scores = scorer.score_sentences(hawkish_sentences)
+    d_scores = scorer.score_sentences(dovish_sentences)
+
+    h_correct = sum(1 for s in h_scores if s.label == "hawkish")
+    d_correct = sum(1 for s in d_scores if s.label == "dovish")
+
+    assert h_correct >= 1, (
+        f"FinBERT failed on hawkish sentences: {[s.label for s in h_scores]}. "
+        f"Scores: {[(s.score_hawkish, s.score_dovish, s.score_neutral) for s in h_scores]}"
+    )
+    assert d_correct >= 1, (
+        f"FinBERT failed on dovish sentences: {[s.label for s in d_scores]}. "
+        f"Scores: {[(s.score_hawkish, s.score_dovish, s.score_neutral) for s in d_scores]}"
     )

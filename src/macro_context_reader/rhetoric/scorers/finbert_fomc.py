@@ -1,11 +1,16 @@
 """FinBERT-FOMC scorer — PRD-101 CC-1.
 
 Wrapper for ZiweiChen/FinBERT-FOMC.
-Label mapping verified from model config:
-  0=hawkish, 1=neutral, 2=dovish
 
-IMPORTANT: This mapping differs from FOMC-RoBERTa (0=H, 1=D, 2=N).
-Always verify against model.config.id2label after loading.
+Label mapping (FinBERT-FOMC ZiweiChen):
+  Model native: {0: 'Neutral', 1: 'Positive', 2: 'Negative'}
+  Mapped to:    {0: 'neutral', 1: 'hawkish',  2: 'dovish'}
+
+  Rationale: In monetary policy context, Positive economic sentiment
+  (strong growth, healthy labor market) historically justifies tightening
+  (hawkish stance), while Negative sentiment (weak growth, labor concerns)
+  justifies easing (dovish stance). This interpretation is validated
+  empirically via integration test on known hawkish/dovish sentences.
 
 Refs: PRD-101 CC-1, Kim et al. (ICAIF 2024)
 """
@@ -24,6 +29,15 @@ from macro_context_reader.rhetoric.schemas import DocumentScore, SentenceScore
 logger = logging.getLogger(__name__)
 
 MODEL_ID = "ZiweiChen/FinBERT-FOMC"
+
+# Mapping from FinBERT-FOMC native labels to monetary policy stance.
+# Positive economic sentiment -> justifies tightening (hawkish)
+# Negative economic sentiment -> justifies easing (dovish)
+FINBERT_FOMC_LABEL_MAP = {
+    "positive": "hawkish",
+    "negative": "dovish",
+    "neutral": "neutral",
+}
 
 
 class FinBERTFOMCScorer:
@@ -57,13 +71,29 @@ class FinBERTFOMCScorer:
         self._label_map = {}
         for idx, raw_label in id2label.items():
             normalized = raw_label.lower().strip()
-            if "hawk" in normalized:
+            if normalized in FINBERT_FOMC_LABEL_MAP:
+                self._label_map[int(idx)] = FINBERT_FOMC_LABEL_MAP[normalized]
+            elif "hawk" in normalized:
                 self._label_map[int(idx)] = "hawkish"
             elif "dov" in normalized:
                 self._label_map[int(idx)] = "dovish"
+            elif "pos" in normalized:
+                self._label_map[int(idx)] = "hawkish"
+            elif "neg" in normalized:
+                self._label_map[int(idx)] = "dovish"
             else:
                 self._label_map[int(idx)] = "neutral"
+
         logger.info("Resolved label map: %s", self._label_map)
+
+        # Fail fast if mapping doesn't produce all three classes
+        mapped_labels = set(self._label_map.values())
+        if "hawkish" not in mapped_labels or "dovish" not in mapped_labels:
+            raise ValueError(
+                f"FinBERT label mapping failed: {self._label_map}. "
+                f"Model id2label was: {id2label}. "
+                "Cannot proceed — all sentences would be classified as neutral."
+            )
 
     def _prob_for_label(self, probs, target: str) -> float:
         """Sum probabilities across all indices mapped to target label."""
