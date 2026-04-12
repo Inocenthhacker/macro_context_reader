@@ -23,6 +23,12 @@ Each DEC follows the structure:
 | DEC-003 | US Rates Source — DFII5 over T5YIE | Approved (retroactive) | 2026-04-11 |
 | DEC-004 | EU inflation expectations source — ECB SPF longer-term HICP | Adopted | 2026-04-11 |
 | DEC-005 | AC-6 reformulation — from global Pearson to regime-conditional | Approved | 2026-04-11 |
+| DEC-006 | Empirical regime classification (HMM + Mahalanobis, no thresholds) | Adopted | 2026-04-12 |
+| DEC-007 | Full-history scaler scope (not pre-COVID only) | Adopted | 2026-04-12 |
+| DEC-008 | HMM diag covariance + BIC+ARI grid selection | Adopted | 2026-04-12 |
+| DEC-009 | Regime-switching correlation — PRD-300 calibration strategy | Adopted | 2026-04-12 |
+| DEC-010 | Session workflow — chat-first decisions, batch documentation | Adopted | 2026-04-12 |
+| DEC-011 | API change protocol — notebooks sync obligatoriu | Adopted | 2026-04-12 |
 
 ## Rules
 

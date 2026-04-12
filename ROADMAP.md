@@ -1,6 +1,6 @@
 # Macro Context Reader — EUR/USD Regime Detector
 ## Roadmap Complet v1.0
-> **Generat:** Aprilie 2026 | **Ultima actualizare:** 2026-04-11 | **Versiune CLAUDE.md:** 1.4
+> **Generat:** Aprilie 2026 | **Ultima actualizare:** 2026-04-12 | **Versiune CLAUDE.md:** 1.4
 
 ---
 
@@ -40,8 +40,8 @@ USD_bias = f(Stratul 1, Stratul 2, Stratul 3, Stratul 4)
 ┌─────────────────────────────────────────────────────────────────┐
 │  PRD-050: MACRO REGIME CLASSIFIER (rulează ÎNAINTEA tuturor)   │
 │  INFLATION | GROWTH | FINANCIAL_STABILITY                       │
-│  Metoda 1: Rule-based (thresholds YAML)                        │
-│  Metoda 2: Historical Analogs (Mahalanobis distance)           │
+│  Metoda 1: HMM (GaussianHMM, BIC+ARI selection) — DEC-006      │
+│  Metoda 2: Historical Analogs (Mahalanobis distance) — DEC-006 │
 └─────────────────────────┬───────────────────────────────────────┘
                           │ regime_weights per strat
           ┌───────────────┼───────────────┐
@@ -160,13 +160,13 @@ surprise_score = NLP_hawkish_score - FedWatch_hawkish_probability
 |---|---|---|---|---|
 | **PRD-001** | Project Structure & Repository Setup | ✅ **Done** | Infrastructure | ✅ |
 | **PRD-002** | Compute Infrastructure — GPU & Cloud | 🔵 Draft | Infrastructure | Parțial |
-| **PRD-050** | Macro Regime Classifier — System Triage | 🔵 Draft | Infrastructure | ✅ CC-4 Done |
+| **PRD-050** | Macro Regime Classifier — System Triage | ✅ **Done** | Infrastructure | ✅ HMM+Mahalanobis+consensus, 24 tests |
 | **PRD-051** | Regime Monitor — Standalone Dashboard | 🔵 Draft | Infrastructure | ✅ CC-1 Done |
 | **PRD-101** | FOMC-RoBERTa Baseline | ❌ Necreat | Stratul 1 | ❌ |
 | **PRD-102** | Concept Indicator Framework (Aruoba-Drechsel) | 🔵 Draft | Stratul 1 | ✅ CC-1 Done |
-| **PRD-200** | Market Pricing Pipeline | 🟢 In Progress | Stratul 2 | Parțial (CC-1..CC-4 ✅) |
+| **PRD-200** | Market Pricing Pipeline | ✅ **Done** | Stratul 2 | ✅ All modules + 78 tests + notebooks 02/02b |
 | **PRD-300** | Divergence & Sentiment Trend Signal | 🟡 Reserved | Stratul 3 | ✅ CC-0 Done |
-| **PRD-400** | COT Structural Positioning | ✅ **Done** | Stratul 4 | ✅ |
+| **PRD-400** | COT Leveraged Funds Positioning | ✅ **Done** | Stratul 4 | ✅ (rebranded CC-4) |
 | **PRD-401** | Tactical Positioning — OI + Options + Retail | ✅ **Done** | Stratul 4 | ✅ |
 | **PRD-500** | Output Aggregation — DST Evidence Fusion | 🟡 Reserved | Output | ✅ CC-0 Done |
 
@@ -214,12 +214,15 @@ macro_context_reader/
     │       ├── __init__.py
     │       └── base.py               ← CC-1: Protocol definition
     │
-    ├── regime/                        ← PRD-050 ✅ PLACEHOLDER DONE
-    │   ├── __init__.py                ← MacroRegime enum + lazy imports
-    │   ├── indicators.py              ← fetch_triage_indicators() din FRED
-    │   ├── classifier.py              ← classify_regime() + get_current_regime()
-    │   ├── router.py                  ← get_regime_weights() + DEFAULT_REGIME_WEIGHTS
-    │   └── analog_detector.py         ← PRD-050/CC-2b: Mahalanobis + historical analogs
+    ├── regime/                        ← PRD-050 ✅ IMPLEMENTED (HMM + Mahalanobis)
+    │   ├── __init__.py                ← MacroRegime enum + get_current_regime() + get_regime_history()
+    │   ├── schemas.py                 ← Pydantic: StateProfile, AnalogMatch, RegimeClassification
+    │   ├── indicators.py              ← build_regime_features() — 6 FRED series, StandardScaler
+    │   ├── hmm_classifier.py          ← HMMRegimeClassifier: BIC+ARI grid, auto-labels
+    │   ├── analog_detector.py         ← MahalanobisAnalogDetector: Tikhonov, anti-leakage
+    │   ├── consensus.py               ← classify_regime_consensus() — HMM+Analog aggregation
+    │   ├── classifier.py              ← (legacy skeleton — rule-based, kept for reference)
+    │   └── router.py                  ← get_regime_weights() + DEFAULT_REGIME_WEIGHTS
     │
     ├── monitoring/                    ← PRD-051 ✅ PLACEHOLDER DONE
     │   ├── __init__.py
@@ -300,12 +303,12 @@ macro_context_reader/
 
 | Task | PRD | Status |
 |---|---|---|
-| FRED + ECB ingestie: real_rate_differential | PRD-200 | 🟡 In Progress (CC-1..CC-4 ✅, CC-5 PHASE 1 ✅) |
-| COT structural pipeline + tests | PRD-400 / CC-1, CC-2 | ❌ |
-| Macro Regime Classifier — implementare | PRD-050 / CC-1, CC-2, CC-3 | ❌ |
-| Historical Analog Detector — implementare | PRD-050 / CC-2b | ❌ |
-| Backtesting vizual real_rate_diff vs EUR/USD | PRD-002 | ❌ |
-| **Milestone:** corelație vizuală real_rate_diff ↔ EUR/USD confirmată | — | ❌ |
+| FRED + ECB ingestie: real_rate_differential | PRD-200 | ✅ Done (78 tests, notebooks 02/02b) |
+| COT structural pipeline + tests | PRD-400 / CC-1, CC-2 | ✅ Done (rebranded CC-4: cot_leveraged_funds) |
+| Macro Regime Classifier — implementare | PRD-050 / CC-1+2+3, CC-1b | ✅ Done (HMM+Mahalanobis, 24 tests) |
+| Historical Analog Detector — implementare | PRD-050 / CC-1+2+3 | ✅ Done (Tikhonov + anti-leakage) |
+| Backtesting vizual real_rate_diff vs EUR/USD | PRD-200 / notebook 02 | ✅ Done (Pearson r = −0.045 global) |
+| **Milestone:** corelație vizuală real_rate_diff ↔ EUR/USD confirmată | DEC-009 | ✅ **Atins** (regime-switching, DEC-005/009) |
 
 ### Faza 2 — NLP Layer
 > **Obiectiv:** Semnalul de surpriză Fed față de așteptările pieței
@@ -420,7 +423,8 @@ streamlit>=1.30       # Regime Monitor dashboard
 > dependențele sunt adăugate în `pyproject.toml` doar când sunt efectiv folosite
 > de un PRD implementat. Lista de mai sus reprezintă stack-ul *planificat* pentru
 > întregul proiect. Stack-ul curent instalat (Aprilie 2026) conține doar:
-> `cot-reports`, `pyarrow` (core) + `pytest`, `python-dotenv`, `jupyter`,
+> `cot-reports`, `pyarrow`, `pydantic`, `fredapi`, `python-dotenv`, `ecbdata`,
+> `hmmlearn`, `scikit-learn`, `scipy` (core) + `pytest`, `jupyter`,
 > `macrosynergy`, `ewstools` (dev). Vezi D13.
 
 ### Modele HuggingFace
@@ -500,41 +504,64 @@ streamlit>=1.30       # Regime Monitor dashboard
 | D12 | GFCI proxy = Chicago Fed NFCI (FRED) | Corelație >0.85 cu Goldman GFCI, gratuit, săptămânal din 1971 |
 | D13 | Dependențe adăugate incremental per PRD în pyproject.toml | Evită bloat; fiecare PRD declară ce are nevoie; previne instalare preventivă de librării nefolosite |
 | D14 | Test coverage obligatoriu pentru fiecare PRD care atinge un modul | Regulă CLAUDE.md v1.4; previne datoria tehnică de testare pe modulele non-positioning |
+| D15 | Regime classifier empiric (HMM+Mahalanobis), zero hardcoded thresholds | DEC-006: Regimuri emergent din date, nu din YAML; auto-labeling; consensus mechanism |
+| D16 | Scaler fit pe full history (nu pre-COVID only) | DEC-007: Post-COVID e regim, nu outlier; evită artefacte de rescalare |
+| D17 | HMM covariance_type="diag" + grid [2..8] + BIC+ARI selection | DEC-008: Parsimonie (36 vs 126 params); stabilitate cross-seed (ARI≥0.70) |
+| D18 | Corelații regime-conditional la PRD-300 (global r=−0.045 = regime-switching) | DEC-009: Nu corelație globală ci per-regim; rolling correlation ca feature |
+| D19 | Workflow chat-first + batch documentation la session checkout | DEC-010: Decizii în chat, cod imediat, docs consolidate la final |
 
 ---
 
 ## Ordinea de Execuție pentru Prompturi Claude Code
 
-### ✅ Completat
-PRD-400 (CC-1, CC-2) — COT structural ✅
-PRD-401 (CC-1..CC-4) — Tactical positioning ✅
+### ✅ Completat — Faza 0+1+3
+```
+PRD-001          — Repository setup                           ✅ Done
+PRD-400 (CC-1..CC-4) — COT leveraged funds (rebranded)       ✅ Done (5d5629d)
+PRD-401 (CC-1..CC-4) — Tactical positioning                  ✅ Done
+PRD-200 (CC-1..CC-8) — Market Pricing Pipeline complet       ✅ Done (78 tests, 02/02b notebooks)
+PRD-050 (CC-1+2+3, CC-1b) — Macro Regime Classifier         ✅ Done (1d32bb5, ca1651f) [24 tests]
+```
+**Milestone Faza 1:** corelație vizuală real_rate_diff ↔ EUR/USD ✅ **ATINS**
+  - Global r = −0.045 (regime-switching confirmat — DEC-005, DEC-009)
+  - Rolling 252d: range [−0.93, +0.67], 67.4% negative, 4 sign flips
+  - CUSUM structural breaks: 72.2% outside 95% CI
 
-### 🎯 Următorul pas — Faza 1 (Ancora Fundamentală)
-Conform D1 (real_rate_diff → NLP → positioning → DST), Faza 1 este următoarea.
-### 🟢 În execuție — PRD-200 (Market Pricing Pipeline)
-```
-PRD-200 / CC-1: Protocol base + schemas Pydantic              ✅ Done (fae3e85)
-PRD-200 / CC-2b: US rates 5Y (DGS5/DFII5)                    ✅ Done (1a8c91a) [DEC-001]
-PRD-200 / CC-3: EU rates 5Y dual AAA + All                    ✅ Done (a976684) [DEC-002]
-PRD-200 / CC-4: Pydantic validation + integration marker      ✅ Done (888ba69)
-PRD-200 / CC-5: ECB SPF inflation expectations                🟡 PHASE 1 discovery complete
-PRD-200 / CC-6: real_rate_diff.py + teste                     ❌ Not Started
-PRD-200 / CC-7: Notebook 02_layer2_market_pricing.ipynb       ❌ Not Started
-```
-Milestone Faza 1: corelație vizuală real_rate_diff ↔ EUR/USD confirmată — pending CC-5..CC-7
+### 🎯 Următorul pas — Faza 2 (NLP Layer)
+Conform D1 (real_rate_diff → NLP → positioning → DST), Faza 1 e completă.
 
 ### 🔵 Pending aprobare (Draft)
 ```
 PRD-002 / CC-2..CC-5 (infrastructure, notebooks, dependențe)
-PRD-050 / CC-1, CC-2, CC-3 (implementare regime classifier)
-PRD-050 / CC-2b implementare (analog detector Mahalanobis)
-PRD-051 / CC-1 (notebooks/06_regime_monitor.ipynb creare)
 PRD-051 / CC-2..CC-4 (dashboard Streamlit complet)
+PRD-101 (de creat) — FOMC-RoBERTa baseline
 PRD-102 / CC-2..CC-6 (concept framework implementare)
 PRD-202 / CC-1..CC-5 (tactical short-horizon signal layer)
-PRD-300 / CC-1..CC-5 (divergence signal implementare)
+PRD-300 / CC-1..CC-5 (divergence signal — regime-conditional, DEC-009)
 PRD-500 / CC-1..CC-5 (DST aggregation implementare)
 ```
+
+---
+
+---
+
+## 9. Empirical Findings (Session 2026-04-12)
+
+### Real Rate Differential vs EUR/USD
+- **Global Pearson (10Y, level):** r = −0.045, p = 0.026
+- **Rolling 252-day range:** [−0.93, +0.67] — 4 sign flips
+- **Time distribution:** 67.4% strong negative (r < −0.30), 19.6% neutral, 13.0% strong positive
+- **CUSUM structural break:** 72.2% of observations outside 95% CI
+- **Conclusion:** Relationship is regime-switching, not globally stable (DEC-009)
+- **AC-6 reformulated (DEC-005):** median r = −0.51, 19.0% positive windows, min r = −0.93 — all 3 sub-conditions PASS
+
+### HMM Regime Classification (pending FRED validation)
+Expected from notebook `01_regime_classifier_validation.ipynb`:
+- BIC+ARI grid selection on [2..8] states
+- GFC 2008-Q4 and COVID 2020-Q2 → same stress-type state
+- 2022-2023 hiking cycle → inflation-type state
+- Current analogs from 2023-2024, anti-regimes from GFC/COVID
+- To be populated after first FRED run
 
 ---
 
