@@ -156,3 +156,17 @@ class TestBootstrapAndPermutation:
         )
         assert res.per_regime[0].low_sample_warning is True
         assert res.per_regime[0].n_obs == 20
+
+
+class TestStartDateAlignment:
+    def test_default_start_respects_t5yie(self) -> None:
+        """Default start date should be >= 2003-01-01 (T5YIE availability)."""
+        import inspect
+        from macro_context_reader.divergence.regime_conditional import load_aligned_data
+
+        sig = inspect.signature(load_aligned_data)
+        default_start = sig.parameters["start"].default
+        assert default_start >= "2003-01-01", (
+            f"Default start is {default_start}, expected >= 2003-01-01 "
+            "(T5YIE starts 2003-01-02)"
+        )
