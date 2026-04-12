@@ -9,3 +9,26 @@ Concept Framework (PRD-102) in concept_framework/ subpackage.
 
 Refs: PRD-101, PRD-102
 """
+
+import shutil
+from pathlib import Path
+
+
+def clear_cache(doc_type: str | None = None) -> None:
+    """Delete cached raw documents for re-fetching.
+
+    Args:
+        doc_type: If specified, clear only that type ('statement', 'minutes', etc.).
+                  If None, clear all cached documents.
+    """
+    from macro_context_reader.rhetoric.scraper import CACHE_DIR
+
+    if doc_type:
+        target = CACHE_DIR / doc_type
+    else:
+        target = CACHE_DIR
+
+    if target.exists():
+        shutil.rmtree(target)
+        target.mkdir(parents=True, exist_ok=True)
+        print(f"Cleared cache: {target}")
