@@ -41,9 +41,6 @@ FRED_SERIES = {
     "T10Y2Y": "yield_curve",
 }
 
-# Pre-COVID calibration window for StandardScaler
-SCALER_FIT_START = "2000-01-01"
-SCALER_FIT_END = "2019-12-31"
 
 
 def _get_fred_client() -> Fred:
@@ -147,18 +144,18 @@ def build_regime_features(
 
     logger.info("Feature matrix: %d months, %d features", len(features), features.shape[1])
 
-    # Standardize: fit on pre-COVID window, transform on all
+    # Standardize: fit on full available history.
+    # Post-COVID regime is part of the population, not an outlier to
+    # compare against pre-COVID. HMM needs properly normalized input
+    # spanning all observed regimes to discover cluster structure.
     scaler = StandardScaler()
-    fit_mask = (features.index >= SCALER_FIT_START) & (features.index <= SCALER_FIT_END)
-    fit_data = features.loc[fit_mask]
 
-    if len(fit_data) < 24:
+    if len(features) < 24:
         raise RuntimeError(
-            f"Only {len(fit_data)} months in calibration window "
-            f"({SCALER_FIT_START} to {SCALER_FIT_END}). Need at least 24."
+            f"Only {len(features)} months available. Need at least 24."
         )
 
-    scaler.fit(fit_data.values)
+    scaler.fit(features.values)
     scaled = scaler.transform(features.values)
 
     result = pd.DataFrame(
