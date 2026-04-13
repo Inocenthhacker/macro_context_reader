@@ -1,4 +1,4 @@
-"""Tests for Beige Book PDF scraper — PRD-102 CC-1-FIX8."""
+"""Tests for Beige Book PDF scraper — PRD-102 CC-1-FIX9."""
 
 from __future__ import annotations
 
@@ -438,6 +438,47 @@ def test_pdf_parse_2024_all_districts() -> None:
             )
     finally:
         pdf_path.unlink(missing_ok=True)
+
+
+@pytest.mark.integration
+def test_pymupdf_extracts_multi_column_pdf() -> None:
+    """Regression: COVID-era multi-column PDF (2021-06-02) correctly parsed via PyMuPDF."""
+    import requests as req
+    url = "https://www.federalreserve.gov/monetarypolicy/files/BeigeBook_20210602.pdf"
+    resp = req.get(url, timeout=60, headers={"User-Agent": "MacroContextReader/1.0"})
+    resp.raise_for_status()
+
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+        f.write(resp.content)
+        pdf_path = Path(f.name)
+
+    try:
+        text = extract_text_from_pdf(pdf_path)
+        sections = split_pdf_into_sections(text)
+
+        assert len(sections) == 13  # national + 12 districts
+        expected = ["national_summary"] + list(ALL_DISTRICTS)
+        for name in expected:
+            assert name in sections, f"Missing: {name}"
+            assert len(sections[name]) >= 500, (
+                f"{name}: {len(sections[name])} chars (expected >= 500)"
+            )
+    finally:
+        pdf_path.unlink(missing_ok=True)
+
+
+def test_fallback_pattern_finds_standalone_districts() -> None:
+    """Districts appearing only as standalone lines (no 'Federal Reserve Bank of' prefix)."""
+    parts = ["National Summary\nEconomic activity grew moderately.\n" + "x " * 500 + "\n\n"]
+    for d in ALL_DISTRICTS:
+        parts.append(f"\n{d}\n" + f"The {d} district reported moderate growth. " * 80 + "\n\n")
+    fake_text = "".join(parts)
+
+    sections = split_pdf_into_sections(fake_text)
+    assert "national_summary" in sections
+    for d in ALL_DISTRICTS:
+        assert d in sections, f"Missing via fallback: {d}"
+        assert len(sections[d]) >= 500
 
 
 @pytest.mark.integration

@@ -1,4 +1,4 @@
-"""Beige Book scraper — PRD-102 CC-1-FIX8.
+"""Beige Book scraper — PRD-102 CC-1-FIX9.
 
 PDF-based: each Beige Book is downloaded as a single PDF (consistent format
 2011-present), then split into national summary + 12 district sections using
@@ -7,16 +7,21 @@ PDF-based: each Beige Book is downloaded as a single PDF (consistent format
 Architecture:
   1. discover_publications() scrapes Fed archive + current index pages
      → list of {publication_date, yyyy_nn, pdf_url}
-  2. fetch_all_beige_books() downloads each PDF, extracts text via pdfplumber,
+  2. fetch_all_beige_books() downloads each PDF, extracts text via PyMuPDF,
      splits into sections, returns list[BeigeBookDocument]
   3. Single code path for all years (no monolithic/fragmented branching)
+
+PyMuPDF (fitz) handles multi-column layouts natively, critical for
+COVID-era publications (2020-2022) with 2-column format.
+Fallback regex finds districts without "Federal Reserve Bank of" prefix
+(e.g. St. Louis appearing as standalone line in some PDFs).
 
 PDF URL pattern: /monetarypolicy/files/BeigeBook_{YYYYMMDD}.pdf
 Cache: data/economic_sentiment/raw/beige_book/pdf/ (raw PDFs)
        data/economic_sentiment/raw/beige_book/text/ (extracted sections)
 Rate limiting: 2s between requests.
 
-Refs: PRD-102 CC-1-FIX8
+Refs: PRD-102 CC-1-FIX9
 """
 
 from __future__ import annotations
@@ -29,7 +34,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TypedDict
 
-import pdfplumber
+import fitz  # PyMuPDF
 import requests
 from bs4 import BeautifulSoup
 
@@ -79,8 +84,8 @@ _MONTH_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-# District section header patterns in pdfplumber-extracted text.
-# PDF layout varies by era:
+# Legacy district section header patterns (line-break-separated).
+# PDF layout varies by era and extraction tool:
 #   2024+: "Federal Reserve Bank of\n{DistrictName}\nSummary..."
 #   2019-:  "\n{DistrictName}\nFederal Reserve Bank of\n"
 # Both place the district name on its own line adjacent to "Federal Reserve Bank of".
@@ -189,17 +194,17 @@ def _download_pdf(session: requests.Session, pdf_url: str, pub_date: datetime) -
 
 
 def extract_text_from_pdf(pdf_path: Path) -> str:
-    """Extract all text from a Beige Book PDF using pdfplumber.
+    """Extract all text from a Beige Book PDF using PyMuPDF.
+
+    PyMuPDF handles multi-column layouts natively, which is critical for
+    COVID-era publications (2020-2022) that use 2-column format.
 
     Returns concatenated text from all pages.
     Raises ValueError if extracted text is too short (<5000 chars).
     """
-    pages_text: list[str] = []
-    with pdfplumber.open(pdf_path) as pdf:
-        for page in pdf.pages:
-            text = page.extract_text()
-            if text:
-                pages_text.append(text)
+    doc = fitz.open(pdf_path)
+    pages_text = [page.get_text() for page in doc]
+    doc.close()
 
     full_text = "\n".join(pages_text)
 
@@ -216,86 +221,103 @@ def extract_text_from_pdf(pdf_path: Path) -> str:
 # PDF section splitting
 # ---------------------------------------------------------------------------
 
+def _build_primary_pattern(district: str) -> re.Pattern:
+    """Strict pattern: 'Federal Reserve Bank of X' with district escaped."""
+    escaped = re.escape(district)
+    return re.compile(
+        rf"Federal Reserve Bank of\s+{escaped}\b", re.IGNORECASE,
+    )
+
+
+def _build_fallback_pattern(district: str) -> re.Pattern:
+    """Standalone line pattern for districts without 'Federal Reserve Bank of' prefix.
+
+    Requires district name on its own line (preceded and followed by newlines).
+    Used when PyMuPDF text lacks the full header prefix (e.g. St. Louis in some
+    COVID-era PDFs).
+    """
+    escaped = re.escape(district)
+    return re.compile(rf"\n\s*{escaped}\s*\n", re.IGNORECASE)
+
+
 def split_pdf_into_sections(full_text: str) -> dict[str, str]:
     """Split Beige Book PDF text into national summary + 12 district sections.
 
-    Uses "Federal Reserve Bank of {name}" headers as section boundaries.
-    The header text may appear multiple times (table of contents + actual
-    section). We use the LAST set of 12 that appears in canonical order
-    (Boston, New York, ..., San Francisco).
+    Strategy:
+      1. Find district headers via primary pattern ("Federal Reserve Bank of X")
+      2. For districts not found, retry with fallback pattern (standalone line)
+      3. Use LAST occurrence of each district (skip ToC entries)
+      4. Validate each section has >= 500 chars
 
     Returns:
         {"national_summary": "...", "Boston": "...", ..., "San Francisco": "..."}
 
     Raises:
-        ValueError: if fewer than 12 districts found or any district <500 chars.
+        ValueError: if any district not found or any section < 500 chars.
     """
-    # Find all occurrences of each district section header.
-    # Try pattern A (2024+) first, fall back to pattern B (2019 and earlier).
-    district_positions: dict[str, list[int]] = {d: [] for d in ALL_DISTRICTS}
+    district_positions: dict[str, tuple[int, str]] = {}
 
-    for pattern in (_FRB_SECTION_RE_A, _FRB_SECTION_RE_B):
-        for m in pattern.finditer(full_text):
-            raw_name = m.group(1).strip()
-            for known in ALL_DISTRICTS:
-                if raw_name.lower().replace(".", "").replace("  ", " ") == \
-                   known.lower().replace(".", ""):
-                    district_positions[known].append(m.start())
-                    break
+    for district in ALL_DISTRICTS:
+        # Try primary pattern first
+        primary = _build_primary_pattern(district)
+        matches = list(primary.finditer(full_text))
+        if matches:
+            district_positions[district] = (matches[-1].start(), "primary")
+            continue
 
-    missing = [d for d, pos in district_positions.items() if not pos]
+        # Also try legacy patterns (line-break-separated headers)
+        for pattern in (_FRB_SECTION_RE_A, _FRB_SECTION_RE_B):
+            legacy_matches = []
+            for m in pattern.finditer(full_text):
+                raw_name = m.group(1).strip()
+                normalized = raw_name.lower().replace(".", "").replace("  ", " ")
+                if normalized == district.lower().replace(".", ""):
+                    legacy_matches.append(m)
+            if legacy_matches:
+                district_positions[district] = (legacy_matches[-1].start(), "legacy")
+                break
+
+        if district in district_positions:
+            continue
+
+        # Fallback: standalone line
+        fallback = _build_fallback_pattern(district)
+        fb_matches = list(fallback.finditer(full_text))
+        if fb_matches:
+            district_positions[district] = (fb_matches[-1].start(), "fallback")
+
+    missing = [d for d in ALL_DISTRICTS if d not in district_positions]
     if missing:
+        found_primary = [d for d, (_, s) in district_positions.items() if s == "primary"]
+        found_legacy = [d for d, (_, s) in district_positions.items() if s == "legacy"]
+        found_fallback = [d for d, (_, s) in district_positions.items() if s == "fallback"]
         raise ValueError(
             f"Districts not found in PDF text: {missing}. "
-            f"Text length: {len(full_text)} chars."
+            f"Text length: {len(full_text)} chars. "
+            f"Found via primary: {found_primary}. "
+            f"Found via legacy: {found_legacy}. "
+            f"Found via fallback: {found_fallback}."
         )
 
-    # Take the LAST occurrence of each district (skips table of contents).
-    # Validate they appear in canonical order.
-    last_positions = [(d, positions[-1]) for d, positions in district_positions.items()]
-    last_positions.sort(key=lambda x: x[1])
-    actual_order = [d for d, _ in last_positions]
+    # Sort districts by position to define section boundaries
+    sorted_districts = sorted(district_positions.items(), key=lambda x: x[1][0])
+    first_district_offset = sorted_districts[0][1][0]
 
-    if actual_order != ALL_DISTRICTS:
-        # Fallback: try first occurrences
-        first_positions = [(d, positions[0]) for d, positions in district_positions.items()]
-        first_positions.sort(key=lambda x: x[1])
-        actual_order_first = [d for d, _ in first_positions]
-        if actual_order_first == ALL_DISTRICTS:
-            last_positions = first_positions
-        else:
-            raise ValueError(
-                f"District order in PDF does not match canonical order. "
-                f"Last-occurrence order: {actual_order}. "
-                f"First-occurrence order: {actual_order_first}. "
-                f"Expected: {ALL_DISTRICTS}."
-            )
-
-    # Extract sections
     sections: dict[str, str] = {}
 
-    # National summary = everything before first district header
-    first_pos = last_positions[0][1]
-    sections["national_summary"] = full_text[:first_pos].strip()
+    # National summary = everything before first district
+    sections["national_summary"] = full_text[:first_district_offset].strip()
 
-    # Each district = text from its header to the next district header (or end)
-    for i, (district, start_pos) in enumerate(last_positions):
-        if i + 1 < len(last_positions):
-            end_pos = last_positions[i + 1][1]
-        else:
-            end_pos = len(full_text)
-        sections[district] = full_text[start_pos:end_pos].strip()
+    # Each district = text from its position to next district's position (or end)
+    for i, (district, (start, _)) in enumerate(sorted_districts):
+        end = sorted_districts[i + 1][1][0] if i + 1 < len(sorted_districts) else len(full_text)
+        sections[district] = full_text[start:end].strip()
 
     # Validate minimum content length
-    if len(sections["national_summary"]) < 500:
-        raise ValueError(
-            f"National summary too short: {len(sections['national_summary'])} chars"
-        )
-    for district in ALL_DISTRICTS:
-        text_len = len(sections.get(district, ""))
-        if text_len < 500:
+    for name, content in sections.items():
+        if len(content) < 500:
             raise ValueError(
-                f"District '{district}' too short: {text_len} chars (minimum 500)"
+                f"Section '{name}' too short: {len(content)} chars (minimum 500)"
             )
 
     return sections
