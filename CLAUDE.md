@@ -454,3 +454,24 @@ Limba: română pentru conversație, engleză pentru cod, nume de librării, ter
 **Recomandare pentru onboarding coleg:**
 Partajează acest fișier colegului înainte de prima sesiune de lucru comună.
 PRD-urile active reprezintă starea proiectului — nu conversațiile din chat.
+
+## Notebook Cell ID Protocol
+
+Fiecare celulă din orice notebook din `notebooks/` are un ID standardizat pentru referințe precise:
+
+**Format:**
+- Code cells: prima linie e `# CELL-<NN>` (ex: `# CELL-03`)
+- Markdown cells: prima linie e `<!-- CELL-<NN> -->` (ex: `<!-- CELL-00 -->`)
+- Numerotare: 0-indexed, zero-padded la 2 cifre, în ordinea naturală din notebook
+
+**Referențiere:**
+`<filename>.ipynb / CELL-<NN>`
+
+Exemplu: `debug_finbert_inspection.ipynb / CELL-05`
+
+**Regenerare IDs** (după adăugare/ștergere/reordonare celule):
+```bash
+python scripts/apply_cell_ids.py
+```
+
+Script-ul e idempotent — poate fi rulat oricând fără efect dacă ID-urile sunt deja corecte.
