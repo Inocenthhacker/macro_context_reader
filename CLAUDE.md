@@ -455,23 +455,39 @@ Limba: română pentru conversație, engleză pentru cod, nume de librării, ter
 Partajează acest fișier colegului înainte de prima sesiune de lucru comună.
 PRD-urile active reprezintă starea proiectului — nu conversațiile din chat.
 
-## Notebook Cell ID Protocol
+## Notebook Cell ID Protocol (v2)
 
-Fiecare celulă din orice notebook din `notebooks/` are un ID standardizat pentru referințe precise:
+Fiecare celulă din `notebooks/` are ID standardizat pentru referințe precise ȘI output-uri identificabile.
 
-**Format:**
-- Code cells: prima linie e `# CELL-<NN>` (ex: `# CELL-03`)
-- Markdown cells: prima linie e `<!-- CELL-<NN> -->` (ex: `<!-- CELL-00 -->`)
-- Numerotare: 0-indexed, zero-padded la 2 cifre, în ordinea naturală din notebook
+**Format code cells:**
+```python
+# CELL-05
+print("[CELL-05]")
 
-**Referențiere:**
-`<filename>.ipynb / CELL-<NN>`
+<user code>
+```
 
-Exemplu: `debug_finbert_inspection.ipynb / CELL-05`
+- Linia 1: comentariu identificator
+- Linia 2: print statement — apare în output pentru tracking
+- Linia 3: blank line separator
+- Linia 4+: cod utilizator
 
-**Regenerare IDs** (după adăugare/ștergere/reordonare celule):
+**Format markdown cells:**
+```markdown
+<!-- CELL-00 -->
+<content>
+```
+
+**Excepții:**
+- Bootstrap cells (conținând `# Idempotent environment bootstrap`): doar comentariu, fără print (pentru a nu polua mesajele de setup)
+
+**Numerotare:** 0-indexed, zero-padded la 2 cifre, în ordinea naturală din notebook.
+
+**Referențiere:** `<filename>.ipynb / CELL-<NN>` (ex: `debug_finbert_inspection.ipynb / CELL-05`)
+
+**Regenerare după modificări:**
 ```bash
 python scripts/apply_cell_ids.py
 ```
 
-Script-ul e idempotent — poate fi rulat oricând fără efect dacă ID-urile sunt deja corecte.
+Idempotent — safe de rulat oricând.

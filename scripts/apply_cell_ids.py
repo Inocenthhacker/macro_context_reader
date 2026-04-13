@@ -1,12 +1,13 @@
 """Apply standardized CELL-<NN> IDs to all notebooks.
 
-Protocol:
-- Code cells: first line is `# CELL-<NN>` (after shebang if any, but notebooks don't have shebangs)
+Protocol (v2):
+- Code cells: first two lines are `# CELL-<NN>` + `print("[CELL-<NN>]")`
+  followed by a blank line, then user content
 - Markdown cells: first line is `<!-- CELL-<NN> -->`
+- Bootstrap cells (containing `# Idempotent environment bootstrap`):
+  only get the comment, NOT the print statement
 - Numbering: 0-indexed, zero-padded to 2 digits, sequential in notebook order
 - Idempotent: existing correct IDs are preserved; wrong/missing IDs are corrected/added
-- Bootstrap cells (containing `# Idempotent environment bootstrap` marker) keep their
-  content after the CELL ID line
 
 Usage:
     python scripts/apply_cell_ids.py              # apply to all notebooks in notebooks/
@@ -24,17 +25,44 @@ import nbformat
 
 CODE_ID_PATTERN = re.compile(r"^#\s*CELL-(\d{2,})\s*$")
 MARKDOWN_ID_PATTERN = re.compile(r"^<!--\s*CELL-(\d{2,})\s*-->\s*$")
+PRINT_ID_PATTERN = re.compile(r'^print\(["\']?\[CELL-(\d{2,})\]["\']?\)\s*$')
 
 MAX_CELLS = 100  # notebooks >99 cells are a red flag
 
 
-def _strip_existing_id(source: str, pattern: re.Pattern[str]) -> str:
-    """Remove existing CELL-NN line if present as first non-empty line."""
+def _strip_existing_id_code(source: str) -> str:
+    """Remove existing `# CELL-NN` and `print("[CELL-NN]")` lines from top of code cell."""
+    lines = source.split("\n")
+    idx = 0
+
+    # Skip leading blank lines
+    while idx < len(lines) and not lines[idx].strip():
+        idx += 1
+
+    # Strip comment ID
+    if idx < len(lines) and CODE_ID_PATTERN.match(lines[idx]):
+        idx += 1
+        # Strip optional blank line after comment
+        if idx < len(lines) and not lines[idx].strip():
+            idx += 1
+
+    # Strip print ID
+    if idx < len(lines) and PRINT_ID_PATTERN.match(lines[idx]):
+        idx += 1
+        # Strip optional blank line after print
+        if idx < len(lines) and not lines[idx].strip():
+            idx += 1
+
+    return "\n".join(lines[idx:])
+
+
+def _strip_existing_id_markdown(source: str) -> str:
+    """Remove existing `<!-- CELL-NN -->` line if present as first non-empty line."""
     lines = source.split("\n")
     for i, line in enumerate(lines):
         if not line.strip():
             continue
-        if pattern.match(line):
+        if MARKDOWN_ID_PATTERN.match(line):
             remainder = lines[i + 1 :]
             if remainder and remainder[0].strip() == "":
                 remainder = remainder[1:]
@@ -54,20 +82,31 @@ def apply_ids_to_notebook(nb_path: Path, dry_run: bool = False) -> dict:
         )
 
     changed = 0
-    skipped = 0
+    skipped_bootstrap = 0
+    skipped_raw = 0
 
     for idx, cell in enumerate(nb.cells):
         cell_id = f"{idx:02d}"
         original_source = cell.source
 
         if cell.cell_type == "code":
-            stripped = _strip_existing_id(original_source, CODE_ID_PATTERN)
-            new_source = f"# CELL-{cell_id}\n{stripped}" if stripped.strip() else f"# CELL-{cell_id}\n"
+            is_bootstrap = "# Idempotent environment bootstrap" in original_source
+            stripped = _strip_existing_id_code(original_source)
+
+            if is_bootstrap:
+                # Only comment, no print — avoid polluting setup messages
+                new_source = f"# CELL-{cell_id}\n{stripped}" if stripped.strip() else f"# CELL-{cell_id}\n"
+                skipped_bootstrap += 1
+            else:
+                # Full: comment + print + blank line + content
+                prefix = f"# CELL-{cell_id}\nprint(\"[CELL-{cell_id}]\")\n"
+                new_source = f"{prefix}\n{stripped}" if stripped.strip() else prefix
+
         elif cell.cell_type == "markdown":
-            stripped = _strip_existing_id(original_source, MARKDOWN_ID_PATTERN)
+            stripped = _strip_existing_id_markdown(original_source)
             new_source = f"<!-- CELL-{cell_id} -->\n{stripped}" if stripped.strip() else f"<!-- CELL-{cell_id} -->\n"
         else:
-            skipped += 1
+            skipped_raw += 1
             continue
 
         if new_source != original_source:
@@ -81,7 +120,8 @@ def apply_ids_to_notebook(nb_path: Path, dry_run: bool = False) -> dict:
         "path": nb_path,
         "total_cells": len(nb.cells),
         "changed": changed,
-        "skipped_raw": skipped,
+        "skipped_bootstrap": skipped_bootstrap,
+        "skipped_raw": skipped_raw,
     }
 
 
