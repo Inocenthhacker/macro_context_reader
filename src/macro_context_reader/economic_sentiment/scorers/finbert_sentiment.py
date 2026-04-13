@@ -95,12 +95,17 @@ class FinBERTSentimentScorer:
             )
 
     def _prob_for_label(self, probs, target: str) -> float:
-        """Sum probabilities across all indices mapped to target label."""
-        return sum(
+        """Sum probabilities across all indices mapped to target label.
+
+        Clamps result to [0.0, 1.0] to guard against float32→float64
+        precision artifacts (softmax can produce values like 1.0+5e-8).
+        """
+        total = sum(
             float(probs[idx])
             for idx, label in self._label_map.items()
             if label == target
         )
+        return min(max(total, 0.0), 1.0)
 
     def score_sentences(self, sentences: list[str]) -> list[SentenceSentiment]:
         """Score sentences for economic sentiment (positive/negative/neutral)."""
@@ -118,9 +123,13 @@ class FinBERTSentimentScorer:
                 logits = self._model(**inputs).logits
                 probs = torch.softmax(logits, dim=-1).cpu().numpy()
 
+            # Clamp to [0, 1] first to handle float32 precision artifacts
+            # (softmax can produce values like 1.0000000531 — 5.31e-08 above 1.0)
+            probs = np.clip(probs, 0.0, 1.0)
+            # Renormalize row-wise so probabilities sum to exactly 1.0
+            probs = probs / probs.sum(axis=-1, keepdims=True)
+
             for i, (sent, prob) in enumerate(zip(batch, probs)):
-                prob = prob / prob.sum()
-                prob = np.clip(prob, 0.0, 1.0)
                 p = self._prob_for_label(prob, "positive")
                 neg = self._prob_for_label(prob, "negative")
                 n = self._prob_for_label(prob, "neutral")

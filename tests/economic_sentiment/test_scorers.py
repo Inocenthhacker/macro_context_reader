@@ -164,3 +164,62 @@ def test_finbert_sentiment_empirical() -> None:
         f"FinBERT failed on negative economic text: {[s.label for s in neg_scores]}. "
         f"Scores: {[(s.score_positive, s.score_negative, s.score_neutral) for s in neg_scores]}"
     )
+
+
+@pytest.mark.integration
+@needs_torch
+def test_probabilities_sum_to_one() -> None:
+    """All sentence scores sum to exactly 1.0 after clamp+renormalize."""
+    from macro_context_reader.economic_sentiment.scorers.finbert_sentiment import (
+        FinBERTSentimentScorer,
+    )
+
+    scorer = FinBERTSentimentScorer(device="cpu", batch_size=4)
+    sentences = [
+        "Economic activity declined modestly in the region.",
+        "Employment grew strongly across all sectors.",
+        "Prices were mixed, with some categories rising and others flat.",
+    ]
+    results = scorer.score_sentences(sentences)
+    for r in results:
+        total = r.score_positive + r.score_negative + r.score_neutral
+        assert abs(total - 1.0) < 1e-6, f"Probs sum to {total}, expected 1.0"
+
+
+@pytest.mark.integration
+@needs_torch
+def test_no_probability_exceeds_one() -> None:
+    """Softmax clamp ensures no individual probability > 1.0."""
+    from macro_context_reader.economic_sentiment.scorers.finbert_sentiment import (
+        FinBERTSentimentScorer,
+    )
+
+    scorer = FinBERTSentimentScorer(device="cpu", batch_size=4)
+    sentences = [
+        "Retail revenues increased slightly, while tourism activity grew at an above-average pace.",
+        "Commercial real estate activity weakened further modestly.",
+    ] * 5  # 10 sentences total
+    results = scorer.score_sentences(sentences)
+    for r in results:
+        assert 0.0 <= r.score_positive <= 1.0
+        assert 0.0 <= r.score_negative <= 1.0
+        assert 0.0 <= r.score_neutral <= 1.0
+
+
+@pytest.mark.integration
+@needs_torch
+def test_pydantic_validation_passes_on_realistic_beige_book_input() -> None:
+    """Regression test: real Beige Book sentences that previously triggered Pydantic error."""
+    from macro_context_reader.economic_sentiment.scorers.finbert_sentiment import (
+        FinBERTSentimentScorer,
+    )
+
+    scorer = FinBERTSentimentScorer(device="cpu", batch_size=4)
+    sentences = [
+        "Federal Reserve Bank of Boston Summary of Economic Activity Economic activity declined slightly on average",
+        "Labor Markets Employment was flat on average, and wage growth remained moderate.",
+        "However, contacts from the Boston area noted slightly weaker sales in November",
+    ]
+    # If Pydantic validation fails, this raises ValidationError
+    results = scorer.score_sentences(sentences)
+    assert len(results) == 3
