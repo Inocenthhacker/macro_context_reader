@@ -113,3 +113,47 @@ class TestLoadFedwatchHistory:
         )
         assert df["observation_date"].min() >= pd.Timestamp("2026-01-01")
         assert df["observation_date"].max() <= pd.Timestamp("2026-04-14")
+
+
+class TestWarningOnInvalidFile:
+    """Invalid files should trigger warnings instead of silent skip."""
+
+    def test_warns_on_wrong_prefix(self, tmp_path, caplog):
+        import logging
+
+        (tmp_path / "random_name.csv").write_text("dummy,content")
+
+        with caplog.at_level(logging.WARNING, logger="macro_context_reader.market_pricing.fedwatch.loader"):
+            result = list_available_snapshots(tmp_path)
+
+        assert result == []
+        assert any(
+            "Ignoring CSV with unexpected name" in r.message for r in caplog.records
+        ), f"Expected warning not found: {[r.message for r in caplog.records]}"
+
+    def test_warns_on_bad_date_pattern(self, tmp_path, caplog):
+        import logging
+
+        (tmp_path / "FedMeetingHistory_notadate.csv").write_text("dummy,content")
+
+        with caplog.at_level(logging.WARNING, logger="macro_context_reader.market_pricing.fedwatch.loader"):
+            result = list_available_snapshots(tmp_path)
+
+        assert result == []
+        assert any(
+            "Cannot parse snapshot date" in r.message for r in caplog.records
+        ), f"Expected warning not found: {[r.message for r in caplog.records]}"
+
+    @pytest.mark.skipif(not SEED_PRESENT, reason="Seed CSV not present")
+    def test_valid_file_mixed_with_invalid_still_loaded(self, tmp_path, caplog):
+        import logging
+
+        shutil.copy(SAMPLE_CSV, tmp_path / "FedMeetingHistory_20260414.csv")
+        (tmp_path / "random_garbage.csv").write_text("x")
+
+        with caplog.at_level(logging.WARNING, logger="macro_context_reader.market_pricing.fedwatch.loader"):
+            result = list_available_snapshots(tmp_path)
+
+        assert len(result) == 1
+        assert result[0].name == "FedMeetingHistory_20260414.csv"
+        assert any("Ignoring" in r.message for r in caplog.records)

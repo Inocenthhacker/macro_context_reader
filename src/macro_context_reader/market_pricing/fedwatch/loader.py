@@ -9,6 +9,7 @@ Master persisted at data/market_pricing/fedwatch_history.parquet.
 """
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Optional
 
@@ -16,22 +17,41 @@ import pandas as pd
 
 from .parser import _parse_snapshot_date_from_filename, parse_fedwatch_csv
 
+logger = logging.getLogger(__name__)
+
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 SNAPSHOTS_DIR = _REPO_ROOT / "data" / "market_pricing" / "fedwatch_snapshots"
 MASTER_PARQUET = _REPO_ROOT / "data" / "market_pricing" / "fedwatch_history.parquet"
 
 
 def list_available_snapshots(snapshots_dir: Optional[Path] = None) -> list[Path]:
-    """Return FedMeetingHistory_*.csv files with valid date stamps, ascending by date."""
+    """Return FedMeetingHistory_*.csv files with valid date stamps, ascending by date.
+
+    Emits logging.warning for any CSV in the folder that doesn't match
+    the expected pattern (FedMeetingHistory_YYYYMMDD.csv) — surfaces
+    accidental renames or misplaced files instead of silently dropping them.
+    """
     folder = Path(snapshots_dir) if snapshots_dir else SNAPSHOTS_DIR
     if not folder.exists():
         return []
 
     valid: list[tuple] = []
-    for f in folder.glob("FedMeetingHistory_*.csv"):
+    for f in sorted(folder.glob("*.csv")):
+        if not f.name.startswith("FedMeetingHistory_"):
+            logger.warning(
+                "Ignoring CSV with unexpected name: %s. "
+                "Expected pattern: FedMeetingHistory_YYYYMMDD.csv",
+                f.name,
+            )
+            continue
         try:
             d = _parse_snapshot_date_from_filename(f)
-        except ValueError:
+        except ValueError as e:
+            logger.warning(
+                "Cannot parse snapshot date from filename %s: %s. Skipping.",
+                f.name,
+                str(e),
+            )
             continue
         valid.append((d, f))
 
