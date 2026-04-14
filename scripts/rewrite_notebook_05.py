@@ -106,7 +106,8 @@ for secret in REQUIRED_SECRETS + OPTIONAL_SECRETS:
 
 try:
     import macro_context_reader
-    print(f"\\nBootstrap complete. Package imported from: {macro_context_reader.__file__}")
+    from macro_context_reader.economic_sentiment.loader import load_cleveland_fed_indices
+    print(f"\\nBootstrap complete. Loader importable from: {macro_context_reader.__file__}")
 except ImportError as e:
     raise RuntimeError(f"Bootstrap failed: {e}")
 '''
