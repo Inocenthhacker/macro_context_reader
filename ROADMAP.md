@@ -32,6 +32,12 @@ USD_bias = f(Stratul 1, Stratul 2, Stratul 3, Stratul 4)
 → Confidență scăzută = nu intri în poziție sau reduci size-ul
 ```
 
+**Status 2026-04-14:**
+- ✅ Infrastructure (PRD-001), Economic Sentiment (PRD-102) — Done
+- 🟢 COT Positioning (PRD-400/401) — Approved, pending implementation
+- ⚠️ Real rate differential (PRD-200) — NEIMPLEMENTAT, blocher pentru toate fazele ulterioare
+- 🔵 Restul modulelor — placeholder only
+
 ---
 
 ## 2. Arhitectura în 4 Straturi
@@ -163,7 +169,7 @@ surprise_score = NLP_hawkish_score - FedWatch_hawkish_probability
 | **PRD-050** | Macro Regime Classifier — System Triage | ✅ **Done** | Infrastructure | ✅ HMM+Mahalanobis+consensus, 24 tests |
 | **PRD-051** | Regime Monitor — Standalone Dashboard | 🔵 Draft | Infrastructure | ✅ CC-1 Done |
 | **PRD-101** | FOMC-RoBERTa Baseline | ❌ Necreat | Stratul 1 | ❌ |
-| **PRD-102** | Concept Indicator Framework (Aruoba-Drechsel) | 🔵 Draft | Stratul 1 | ✅ CC-1 Done |
+| **PRD-102** | Economic Sentiment — Cleveland Fed Beige Book Loader | ✅ **Done** | Stratul 1 | ✅ CC-2 Done |
 | **PRD-200** | Market Pricing Pipeline | ✅ **Done** | Stratul 2 | ✅ All modules + 78 tests + notebooks 02/02b |
 | **PRD-300** | Divergence & Sentiment Trend Signal | 🟡 Reserved | Stratul 3 | ✅ CC-0 Done |
 | **PRD-400** | COT Leveraged Funds Positioning | ✅ **Done** | Stratul 4 | ✅ (rebranded CC-4) |
@@ -298,8 +304,9 @@ macro_context_reader/
 | COT Structural pipeline (implementare + tests) | PRD-400 / CC-1, CC-2 | ✅ Done |
 | Tactical Positioning (OI + Options + Retail + composite) | PRD-401 / CC-1..CC-4 | ✅ Done |
 
-### Faza 1 — Ancora Fundamentală
+### Faza 1 — Ancora Fundamentală ⚠️ PRIORITATE IMEDIATĂ
 > **Obiectiv:** Validarea empirică a semnalului structural înainte de orice NLP
+> **Notă 2026-04-14:** PRD-200 (`real_rate_differential`) este fundamentul cantitativ al întregului sistem. Fără el, PRD-300 și PRD-500 nu au ancoră. Toate celelalte investiții NLP sunt marginale fără acest strat.
 
 | Task | PRD | Status |
 |---|---|---|
@@ -349,18 +356,22 @@ macro_context_reader/
 | Backtesting comparativ metode pe USMPD | PRD-300 / CC-5 | ❌ |
 | **Milestone:** Sharpe ratio > 0 pe USMPD backtesting | — | ❌ |
 
-### Faza 5 — Concept Framework (Beige Book)
-> **Obiectiv:** Sub-taxonomia inflației și cauzelor structurale
+### Faza 5 — Economic Sentiment Integration (REDEFINED)
+> **Obiectiv:** Integrare scoruri Cleveland Fed Beige Book ca feature secundar în PRD-300
+> **Scope schimbat 2026-04-14:** Eliminat custom Concept Indicator Framework (Aruoba-Drechsel). Pivot la consumer-only role. Vezi D20.
 
 | Task | PRD | Status |
 |---|---|---|
-| Beige Book corpus ingestie (Minneapolis Fed archive) | PRD-102 / CC-2 | ❌ |
-| Word2Vec antrenat local pe Beige Book | PRD-102 / CC-2 | ❌ |
-| LDA concept discovery | PRD-102 / CC-3 | ❌ |
-| Seeded expansion cu Word2Vec | PRD-102 / CC-4 | ❌ |
-| Extractor + Dictionary YAML | PRD-102 / CC-5 | ❌ |
-| Ridge regression aggregator | PRD-102 / CC-6 | ❌ |
-| **Milestone:** inflation_decomposition validat pe FOMC cycles 2021-2024 | — | ❌ |
+| Cleveland Fed ICPSR V13 loader | PRD-102 / CC-2 | ✅ Done |
+| Integration in PRD-300 as minor feature (weight ~10-15%) | PRD-300 | ❌ |
+| `national_consensus_divergence` as independent signal | PRD-300 | ❌ |
+| District heterogeneity weighting (NY + SF more predictive per Boston Fed 2025) | PRD-300 | ❌ |
+| Manual refresh procedure (6-8 weeks, ICPSR) | Infrastructure doc | ❌ |
+| **Milestone:** Cleveland Fed scores integrated as filter layer in divergence signal | — | ❌ |
+
+**Deferred (technical debt, low priority):**
+- ICPSR automation (login + download) — requires session management, marginal value
+- Custom FinBERT pipeline as methodology experiment — only if Cleveland Fed has breaking methodology changes
 
 ### Faza 6 — Output Aggregation (DST)
 > **Obiectiv:** Fuziunea finală cu interval de credibilitate explicit
@@ -397,9 +408,8 @@ ecbdata>=0.0.3        # ECB Data Portal
 cot-reports>=0.1      # CFTC COT data
 requests>=2.31
 beautifulsoup4>=4.12
-pdfplumber>=0.10
-transformers>=4.36    # FOMC-RoBERTa
-torch>=2.1
+transformers>=4.36    # FOMC-RoBERTa (rhetoric/ only, NOT economic_sentiment/)
+torch>=2.1            # rhetoric/ only
 sentence-transformers>=2.3
 hmmlearn>=0.3         # Regime detection
 pandas>=2.1
@@ -463,7 +473,8 @@ streamlit>=1.30       # Regime Monitor dashboard
 | Shah, Paturi & Chava (ACL 2023) | FOMC-RoBERTa, dataset adnotat manual | Stratul 1 baseline |
 | Kim et al. (ICAIF 2024) | Benchmark: FinBERT-FOMC 63.8% < GPT-4 68.2% < Llama 79.34% | Alegere model |
 | Djourelova et al. (Chicago Fed 2025) | Speeches similare cu Powell presser amplifică semnalul | Matched-filter weighting |
-| Aruoba & Drechsel (UMD 2024) | 296 indicatori concept-specifici + ridge regression | PRD-102 framework |
+| Aruoba & Drechsel (UMD 2024) | 296 indicatori concept-specifici + ridge regression | PRD-102 framework (deprecated — vezi D20) |
+| Filippou, Garciga, Mitchell, Nguyen (Cleveland Fed 2024) | FinBERT on Beige Book, national + 12 districts indices | PRD-102 data source |
 
 ### Macro & EUR/USD
 | Paper | Contribuție | Unde se aplică |
@@ -472,6 +483,8 @@ streamlit>=1.30       # Regime Monitor dashboard
 | ECB Blog (Gebauer et al. 2025) | Fed spillover: <63 zile = surface, >63 zile = deep current | PRD-300 calibrare |
 | Macrosynergy Research (2024) | Information change framing + modele simple bate complex | PRD-200, PRD-300 |
 | Mulliner, Harvey, Xia, Fang (2025) | Historical analog detection via Mahalanobis distance | PRD-050 CC-2b |
+| Zavodny & Ginther (Southern Economic Journal 2005) | Beige Book moves bonds/equities marginally, weak FX impact | D22 rationale |
+| Rosa (NY Fed 2013) | FOMC Statement/Minutes triple EUR/USD volatility intraday; Beige Book not tradable on FX | D22 rationale |
 
 ### Metodologie & Cross-Pollination
 | Sursă | Principiu | Unde se aplică |
@@ -509,6 +522,9 @@ streamlit>=1.30       # Regime Monitor dashboard
 | D17 | HMM covariance_type="diag" + grid [2..8] + BIC+ARI selection | DEC-008: Parsimonie (36 vs 126 params); stabilitate cross-seed (ARI≥0.70) |
 | D18 | Corelații regime-conditional la PRD-300 (global r=−0.045 = regime-switching) | DEC-009: Nu corelație globală ci per-regim; rolling correlation ca feature |
 | D19 | Workflow chat-first + batch documentation la session checkout | DEC-010: Decizii în chat, cod imediat, docs consolidate la final |
+| D20 | Cleveland Fed ICPSR indices > custom FinBERT pipeline | 8 scraper iterations (FIX1-FIX8) showed 11% publication loss on edge cases; Cleveland Fed provides institutionally-validated scores (Boston Fed replicated 2025); 6-8 week refresh acceptable for macro regime horizon. **Acronim legacy D13** în PRD-ul de checkout (ciocnire cu D13 deja existent). |
+| D21 | `national_consensus_divergence` as independent signal feature | Cleveland Fed (Filippou et al. 2024) documented systematic Fed narrative optimism vs district reality post-2020; detects potential Fed policy error as tradable signal on monthly horizon. **Acronim legacy D14** în PRD-ul de checkout. |
+| D22 | Economic sentiment weight in PRD-300 composite: ~10-15% | Zavodny & Ginther (2005) + Rosa (2013): Beige Book FX impact empirically weak vs real_rate_diff, FOMC surprise, COT positioning; filter/context layer, not primary driver. **Acronim legacy D15** în PRD-ul de checkout. |
 
 ---
 
