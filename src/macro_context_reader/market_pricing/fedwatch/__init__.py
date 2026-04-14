@@ -7,6 +7,12 @@ from .loader import (
 )
 from .parser import get_snapshot_metadata, parse_fedwatch_csv
 from .schemas import FedWatchRow, FedWatchSnapshot
+from .surprise import (
+    DEFAULT_NLP_CALIBRATION_BPS,
+    SurpriseMethod,
+    compute_surprise_signal,
+    compute_surprise_timeseries,
+)
 
 __all__ = [
     "parse_fedwatch_csv",
@@ -15,6 +21,10 @@ __all__ = [
     "load_all_snapshots",
     "build_master_dataset",
     "load_fedwatch_history",
+    "compute_surprise_signal",
+    "compute_surprise_timeseries",
+    "SurpriseMethod",
+    "DEFAULT_NLP_CALIBRATION_BPS",
     "FedWatchRow",
     "FedWatchSnapshot",
 ]
