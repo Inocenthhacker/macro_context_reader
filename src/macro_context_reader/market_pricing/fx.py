@@ -145,3 +145,52 @@ def run_fx_pipeline(
     """
     df = fetch_fx_eurusd(start=start, end=end)
     return save_fx(df, output_path=output_path)
+
+
+# Repo-root absolute path (fx.py is 4 levels deep under repo root):
+# fx.py -> market_pricing -> macro_context_reader -> src -> repo_root
+FX_PARQUET = Path(__file__).resolve().parents[3] / "data" / "market_pricing" / "fx.parquet"
+FX_HISTORY_DEFAULT_START = "2015-04-01"  # aligned with real_rate_diff coverage
+
+
+def load_fx_history(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    rebuild: bool = False,
+) -> pd.DataFrame:
+    """Load EUR/USD historical data from Parquet (fast) or rebuild from FRED.
+
+    Persisted at data/market_pricing/fx.parquet. If rebuild=True or file missing,
+    fetches fresh from FRED (DEXUSEU) and overwrites Parquet.
+
+    Parameters
+    ----------
+    start_date : str, optional
+        ISO date "YYYY-MM-DD" filter. Default uses persisted full range.
+    end_date : str, optional
+        ISO date "YYYY-MM-DD" filter. Default uses persisted full range.
+    rebuild : bool
+        If True, refetch from FRED and overwrite Parquet. Default False.
+
+    Returns
+    -------
+    pd.DataFrame
+        DatetimeIndex (name='date'), single column 'eurusd' with daily close prices.
+        Forward-filled for non-trading days, with leading NaN dropped.
+    """
+    if rebuild or not FX_PARQUET.exists():
+        raw = fetch_fx_eurusd()
+        df = raw.set_index(pd.DatetimeIndex(raw["date"], name="date"))[["eurusd"]]
+        df = df.ffill().dropna()
+        df = df[df.index >= pd.Timestamp(FX_HISTORY_DEFAULT_START)]
+        FX_PARQUET.parent.mkdir(parents=True, exist_ok=True)
+        df.to_parquet(FX_PARQUET, index=True)
+
+    df = pd.read_parquet(FX_PARQUET)
+
+    if start_date:
+        df = df[df.index >= pd.Timestamp(start_date)]
+    if end_date:
+        df = df[df.index <= pd.Timestamp(end_date)]
+
+    return df
