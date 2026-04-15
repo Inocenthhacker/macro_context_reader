@@ -1,6 +1,6 @@
 # Macro Context Reader — EUR/USD Regime Detector
 ## Roadmap Complet v1.0
-> **Generat:** Aprilie 2026 | **Ultima actualizare:** 2026-04-12 | **Versiune CLAUDE.md:** 1.4
+> **Generat:** Aprilie 2026 | **Ultima actualizare:** 2026-04-15 | **Versiune CLAUDE.md:** 1.4
 
 ---
 
@@ -168,9 +168,10 @@ surprise_score = NLP_hawkish_score - FedWatch_hawkish_probability
 | **PRD-002** | Compute Infrastructure — GPU & Cloud | 🔵 Draft | Infrastructure | Parțial |
 | **PRD-050** | Macro Regime Classifier — System Triage | ✅ **Done** | Infrastructure | ✅ HMM+Mahalanobis+consensus, 24 tests |
 | **PRD-051** | Regime Monitor — Standalone Dashboard | 🔵 Draft | Infrastructure | ✅ CC-1 Done |
-| **PRD-101** | FOMC-RoBERTa Baseline | ❌ Necreat | Stratul 1 | ❌ |
+| **PRD-101** | FOMC-RoBERTa Baseline | 🟢 **~85% Done** | Stratul 1 | ✅ scraper + preprocessor + ensemble (RoBERTa+Llama) + matched_filter + pipeline, 47 unit + 4 skip-guarded integration tests |
 | **PRD-102** | Economic Sentiment — Cleveland Fed Beige Book Loader | ✅ **Done** | Stratul 1 | ✅ CC-2 Done |
 | **PRD-200** | Market Pricing Pipeline | ✅ **Done** | Stratul 2 | ✅ All modules + 78 tests + notebooks 02/02b |
+| **PRD-202** | Market Pricing — FedWatch Loader & Surprise Signal | 🟢 **~95% Done** | Stratul 2 | ✅ parser + loader + surprise (3 methods), 56 tests; pending MAP.md for fedwatch/ submodule |
 | **PRD-300** | Divergence & Sentiment Trend Signal | 🟡 Reserved | Stratul 3 | ✅ CC-0 Done |
 | **PRD-400** | COT Leveraged Funds Positioning | ✅ **Done** | Stratul 4 | ✅ (rebranded CC-4) |
 | **PRD-401** | Tactical Positioning — OI + Options + Retail | ✅ **Done** | Stratul 4 | ✅ |
@@ -307,6 +308,7 @@ macro_context_reader/
 ### Faza 1 — Ancora Fundamentală ⚠️ PRIORITATE IMEDIATĂ
 > **Obiectiv:** Validarea empirică a semnalului structural înainte de orice NLP
 > **Notă 2026-04-14:** PRD-200 (`real_rate_differential`) este fundamentul cantitativ al întregului sistem. Fără el, PRD-300 și PRD-500 nu au ancoră. Toate celelalte investiții NLP sunt marginale fără acest strat.
+> **Notă 2026-04-15:** PRD-202 închide componenta FedWatch (Stratul 2 market expectations): parser CSV + multi-snapshot loader + surprise signal (3 metode). Ancora cantitativă e acum completă: real_rate_diff (PRD-200) + FedWatch surprise (PRD-202).
 
 | Task | PRD | Status |
 |---|---|---|
@@ -317,14 +319,15 @@ macro_context_reader/
 | Backtesting vizual real_rate_diff vs EUR/USD | PRD-200 / notebook 02 | ✅ Done (Pearson r = −0.045 global) |
 | **Milestone:** corelație vizuală real_rate_diff ↔ EUR/USD confirmată | DEC-009 | ✅ **Atins** (regime-switching, DEC-005/009) |
 
-### Faza 2 — NLP Layer
+### Faza 2 — NLP Layer ~85% Done
 > **Obiectiv:** Semnalul de surpriză Fed față de așteptările pieței
+> **Status 2026-04-15:** PRD-101 substantially complete (audit discovered real state ~85% Done, previously marked ❌). PRD-202 closes FedWatch surprise. Outstanding: skip-guard on 4 integration tests (TD-2), USMPD backtesting milestone.
 
 | Task | PRD | Status |
 |---|---|---|
-| FOMC-RoBERTa baseline scoring | PRD-101 (de creat) | ❌ |
-| FedWatch surprise calculation | PRD-200 | ❌ |
-| Matched-filter weighting (cosine similarity) | PRD-101 | ❌ |
+| FOMC-RoBERTa baseline scoring | PRD-101 / CC-1..CC-3 | 🟢 ~85% Done (scraper + preprocessor + ensemble + matched_filter + pipeline; 47 unit tests) |
+| FedWatch surprise calculation | PRD-202 / CC-1..CC-3 | ✅ Done (56 tests; 3 methods: binary, expected_change, KL) |
+| Matched-filter weighting (cosine similarity) | PRD-101 | ✅ Done |
 | Trend/momentum pe NLP scores (EWMA, changepoint) | PRD-300 / CC-1 | ❌ |
 | **Milestone:** surprise_score corelat cu EUR/USD USMPD 30-min | — | ❌ |
 
@@ -525,6 +528,10 @@ streamlit>=1.30       # Regime Monitor dashboard
 | D20 | Cleveland Fed ICPSR indices > custom FinBERT pipeline | 8 scraper iterations (FIX1-FIX8) showed 11% publication loss on edge cases; Cleveland Fed provides institutionally-validated scores (Boston Fed replicated 2025); 6-8 week refresh acceptable for macro regime horizon. **Acronim legacy D13** în PRD-ul de checkout (ciocnire cu D13 deja existent). |
 | D21 | `national_consensus_divergence` as independent signal feature | Cleveland Fed (Filippou et al. 2024) documented systematic Fed narrative optimism vs district reality post-2020; detects potential Fed policy error as tradable signal on monthly horizon. **Acronim legacy D14** în PRD-ul de checkout. |
 | D22 | Economic sentiment weight in PRD-300 composite: ~10-15% | Zavodny & Ginther (2005) + Rosa (2013): Beige Book FX impact empirically weak vs real_rate_diff, FOMC surprise, COT positioning; filter/context layer, not primary driver. **Acronim legacy D15** în PRD-ul de checkout. |
+| D23 | CME FedWatch CSV manual download (weekly) over FRED futures or CME FTP | PRD-202: FRED nu hostează Fed Funds Futures; CME FTP `bulletin/` eliminat post-2025; Cleveland Fed nu are dataset dedicat FOMC probabilities. Manual snapshot weekly = singurul path stabil fără Selenium. |
+| D24 | Three surprise methods implementate simultan (binary, expected_change GSS 2005, KL divergence) | PRD-202: selecție empirică amânată la PRD-300 backtesting pe EUR/USD. Default `expected_change` (Gürkaynak-Sack-Swanson 2005, industry standard). Evită lock-in prematur pe o metodă. |
+| D25 | Default NLP→bps calibration = 25bps per unit hawkish | PRD-202: 25bps = o mișcare standard FOMC. Va fi recalibrat OLS în PRD-300 pe 80+ evenimente FOMC istorice. Placeholder rezonabil pentru bootstrapping Stratul 3. |
+| D26 | Toate Claude Code prompts care modifică cod existent includ secțiune "Context awareness" | Workflow rule 2026-04-15: pattern "Patch X asumă starea Y — verifică Y. IF Y THEN apply. IF NOT return BLOCKER". Previne stacking de fixes pe cod deja fixat și modificări pe fișiere lipsă. Aplicabil pentru patches, refactors, non-greenfield. |
 
 ---
 
@@ -550,9 +557,7 @@ Conform D1 (real_rate_diff → NLP → positioning → DST), Faza 1 e completă.
 ```
 PRD-002 / CC-2..CC-5 (infrastructure, notebooks, dependențe)
 PRD-051 / CC-2..CC-4 (dashboard Streamlit complet)
-PRD-101 (de creat) — FOMC-RoBERTa baseline
 PRD-102 / CC-2..CC-6 (concept framework implementare)
-PRD-202 / CC-1..CC-5 (tactical short-horizon signal layer)
 PRD-300 / CC-1..CC-5 (divergence signal — regime-conditional, DEC-009)
 PRD-500 / CC-1..CC-5 (DST aggregation implementare)
 ```
@@ -578,6 +583,45 @@ Expected from notebook `01_regime_classifier_validation.ipynb`:
 - 2022-2023 hiking cycle → inflation-type state
 - Current analogs from 2023-2024, anti-regimes from GFC/COVID
 - To be populated after first FRED run
+
+---
+
+## 10. PRD-202 — FedWatch Loader & Surprise Signal (Session 2026-04-14/15)
+
+**Module:** `src/macro_context_reader/market_pricing/fedwatch/`
+**Status:** ~95% Done (pending MAP.md pentru fedwatch/ submodule)
+
+### Implementation breakdown
+
+| CC | Scope | Commit | Tests |
+|---|---|---|---|
+| CC-1 | Parser CME FedWatch CSV + pydantic schemas | 451b1dc | 16 |
+| CC-2 | Multi-snapshot loader + dedup + Parquet output | 0d1f93c | 14 |
+| CC-2-PATCH | Warn (not silently skip) on invalid snapshot files | f49f91d | 3 |
+| CC-3 | Surprise signal — 3 methods (binary, expected_change Gürkaynak-Sack-Swanson 2005, Kullback-Leibler divergence) + single/batch interfaces | 0cb3493 | 23 |
+| **Total** | | | **56 green** |
+
+### Architectural decisions (see section 8)
+- D23 — manual weekly CSV ingestion path (FRED/FTP/Selenium ruled out)
+- D24 — three surprise methods simultaneously, empirical selection deferred
+- D25 — 25bps/unit default NLP→bps calibration, to be OLS-fit in PRD-300
+
+### Empirical findings
+- **CME CSV layout:** 9 meeting blocks × 63 rate buckets × ~253 days = ~9220 non-zero records per snapshot (vs ~143k raw). Dropping zeros saves 93% storage.
+- **Probability mass validation:** ~90% of (observation_date, meeting_date) pairs sum to ≥0.95 probability — confirms 63-buckets-per-block parser assumption is correct.
+- **Forward horizon:** CME publishes ~12 months forward, not 15 meetings as initially assumed in PRD draft.
+
+---
+
+## 11. Technical Debt Log
+
+Registru al datoriei tehnice identificate dar deferred din cauza valorii marginale sau priorității scăzute. Fiecare TD are PRD source, descriere, și condiție de închidere.
+
+| TD | Source | Descriere | Close when |
+|---|---|---|---|
+| **TD-1** | PRD-202 | Manual weekly refresh al CME FedWatch CSV snapshots. Automation opțională via OpenClaw/Playwright. | Automation script pe `data/market_pricing/fedwatch/snapshots/` rulat weekly fără intervenție manuală. Low priority — frecvența weekly tolerabilă. |
+| **TD-2** | PRD-101 | 4 integration tests în `tests/rhetoric/test_scorers.py` necesită `pytest.skip` guard dacă `HF_TOKEN` nu e setat. Fail curent: 401 Unauthorized când HF cache e gol. | Skip guard aplicat; tests pass sau skip clean fără token; CI nu blochează la missing secret. |
+| **TD-3** | CLAUDE.md | Line 98 în CLAUDE.md referențiază `ftp.cmegroup.com/bulletin/` care nu mai există. `positioning/oi_signal.py` folosește HTTPS scraping în schimb. Docstring outdated. | CLAUDE.md line 98 updated cu sursa reală CME (HTTPS endpoint) sau marcată explicit ca deprecated. |
 
 ---
 
