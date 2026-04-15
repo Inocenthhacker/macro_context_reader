@@ -73,6 +73,20 @@ Pentru orientare în cod:
 - 🔵 Faza 6 — Output Aggregation (DST)
 - 🔵 Faza 7 — Live Pipeline
 
+## Citing & Acknowledgments
+
+Acest proiect folosește modele și dataset-uri academice dezvoltate de alții. Dacă folosești acest cod sau output-urile sale într-un context de cercetare, te rog citează lucrările relevante:
+
+- **[CITATION.md](CITATION.md)** — listă completă cu BibTeX entries
+- **[CITATION.cff](CITATION.cff)** — format machine-readable (GitHub auto-detectează pentru butonul "Cite this repository")
+
+Key citations:
+- FOMC-RoBERTa: Shah, Paturi, Chava (ACL 2023)
+- Cleveland Fed Beige Book Indices: Filippou, Garciga, Mitchell, Nguyen (Cleveland Fed 2024)
+- Expected rate change formula: Gürkaynak, Sack, Swanson (2005)
+
+License compliance: CC BY-NC 4.0 (non-commercial use only) per FOMC-RoBERTa și Cleveland Fed dataset licenses.
+
 ## Licență
 
 Personal use only. Modelele NLP folosite (FOMC-RoBERTa, Cleveland Fed indices) sunt CC BY-NC 4.0.

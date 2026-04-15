@@ -1,0 +1,160 @@
+cff-version: 1.2.0
+message: "If you use this software or its outputs, please cite the underlying academic works listed in CITATION.md."
+title: "Macro Context Reader — EUR/USD Regime Detector"
+abstract: "A non-commercial research tool for detecting macro regimes in EUR/USD using NLP on Federal Reserve communications, market-implied rate expectations, COT positioning, and Beige Book sentiment. Output is a regime classification with confidence interval, not a price prediction."
+type: software
+authors:
+  - family-names: "Hrimiuc"
+    given-names: ""
+repository-code: "https://github.com/Inocenthhacker/macro_context_reader"
+license: "CC-BY-NC-4.0"
+keywords:
+  - "monetary policy"
+  - "FOMC"
+  - "EUR/USD"
+  - "macro regime detection"
+  - "NLP"
+  - "FinBERT"
+references:
+  - type: conference-paper
+    authors:
+      - family-names: "Shah"
+        given-names: "Agam"
+      - family-names: "Paturi"
+        given-names: "Suvan"
+      - family-names: "Chava"
+        given-names: "Sudheer"
+    title: "Trillion Dollar Words: A New Financial Dataset, Task & Market Analysis"
+    year: 2023
+    collection-title: "Proceedings of the 61st Annual Meeting of the Association for Computational Linguistics (ACL 2023)"
+    url: "https://aclanthology.org/2023.acl-long.368/"
+    notes: "FOMC-RoBERTa model — used in src/macro_context_reader/rhetoric/scorers/fomc_roberta.py"
+  - type: report
+    authors:
+      - family-names: "Filippou"
+        given-names: "Ilias"
+      - family-names: "Garciga"
+        given-names: "Christian"
+      - family-names: "Mitchell"
+        given-names: "James"
+      - family-names: "Nguyen"
+        given-names: "My T."
+    title: "Regional Economic Sentiment: Constructing Quantitative Estimates from the Beige Book and Testing Their Ability to Forecast Recessions"
+    year: 2024
+    institution:
+      name: "Federal Reserve Bank of Cleveland"
+    doi: "10.26509/frbc-ec-202408"
+    notes: "Cleveland Fed Beige Book Sentiment Indices — used in src/macro_context_reader/economic_sentiment/"
+  - type: article
+    authors:
+      - family-names: "Gürkaynak"
+        given-names: "Refet S."
+      - family-names: "Sack"
+        given-names: "Brian"
+      - family-names: "Swanson"
+        given-names: "Eric"
+    title: "Do Actions Speak Louder Than Words? The Response of Asset Prices to Monetary Policy Actions and Statements"
+    year: 2005
+    journal: "International Journal of Central Banking"
+    volume: 1
+    issue: 1
+    notes: "Expected rate change formula — used in src/macro_context_reader/market_pricing/fedwatch/surprise.py"
+  - type: article
+    authors:
+      - family-names: "Kullback"
+        given-names: "Solomon"
+      - family-names: "Leibler"
+        given-names: "Richard A."
+    title: "On Information and Sufficiency"
+    year: 1951
+    journal: "Annals of Mathematical Statistics"
+    volume: 22
+    issue: 1
+    notes: "KL divergence — used in src/macro_context_reader/market_pricing/fedwatch/surprise.py"
+  - type: conference-paper
+    authors:
+      - family-names: "Reimers"
+        given-names: "Nils"
+      - family-names: "Gurevych"
+        given-names: "Iryna"
+    title: "Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks"
+    year: 2019
+    collection-title: "Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing"
+    url: "https://arxiv.org/abs/1908.10084"
+    notes: "Sentence-BERT all-MiniLM-L6-v2 — used in src/macro_context_reader/rhetoric/matched_filter.py"
+  - type: conference-paper
+    authors:
+      - family-names: "Chen"
+        given-names: "Ziwei"
+      - family-names: "Wang"
+        given-names: "Yiqing"
+      - family-names: "Yang"
+        given-names: "Yi"
+    title: "FinBERT-FOMC: A Sentiment Analysis Model for FOMC Statements"
+    year: 2023
+    collection-title: "Proceedings of the 4th ACM International Conference on AI in Finance (ICAIF 2023)"
+    doi: "10.1145/3604237.3626843"
+    notes: "FinBERT-FOMC — used as backup in src/macro_context_reader/rhetoric/scorers/finbert_fomc.py (deprecated default 2026-04-12)"
+  - type: article
+    authors:
+      - family-names: "Huang"
+        given-names: "Allen H."
+      - family-names: "Wang"
+        given-names: "Hui"
+      - family-names: "Yang"
+        given-names: "Yi"
+    title: "FinBERT: A Large Language Model for Extracting Information from Financial Text"
+    year: 2023
+    journal: "Contemporary Accounting Research"
+    volume: 40
+    issue: 2
+    doi: "10.1111/1911-3846.12832"
+    notes: "FinBERT base model — used indirectly via Cleveland Fed Beige Book Sentiment Indices"
+  - type: article
+    authors:
+      - family-names: "Scheffer"
+        given-names: "Marten"
+      - family-names: "Bascompte"
+        given-names: "Jordi"
+      - family-names: "Brock"
+        given-names: "William A."
+      - family-names: "Carpenter"
+        given-names: "Stephen R."
+      - family-names: "Sugihara"
+        given-names: "George"
+    title: "Early-warning signals for critical transitions"
+    year: 2009
+    journal: "Nature"
+    volume: 461
+    issue: 7260
+    doi: "10.1038/nature08227"
+    notes: "EWS theory — planned use in src/macro_context_reader/monitoring/ (PRD-051)"
+  - type: article
+    authors:
+      - family-names: "Dempster"
+        given-names: "Arthur P."
+    title: "Upper and Lower Probabilities Induced by a Multivalued Mapping"
+    year: 1967
+    journal: "Annals of Mathematical Statistics"
+    volume: 38
+    issue: 2
+    notes: "Dempster-Shafer theory foundation — planned use in src/macro_context_reader/output/ (PRD-500)"
+  - type: book
+    authors:
+      - family-names: "Shafer"
+        given-names: "Glenn"
+    title: "A Mathematical Theory of Evidence"
+    year: 1976
+    publisher:
+      name: "Princeton University Press"
+    notes: "Dempster-Shafer theory canonical reference — planned use in src/macro_context_reader/output/ (PRD-500)"
+  - type: generic
+    authors:
+      - family-names: "Dezert"
+        given-names: "Jean"
+      - family-names: "Smarandache"
+        given-names: "Florentin"
+    title: "Proportional Conflict Redistribution Rules for Information Fusion"
+    year: 2004
+    collection-title: "Advances and Applications of DSmT for Information Fusion, Vol. 2"
+    notes: "PCR5 combination rule — planned use in src/macro_context_reader/output/combination_rules/pcr5.py"
