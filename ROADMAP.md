@@ -171,7 +171,7 @@ surprise_score = NLP_hawkish_score - FedWatch_hawkish_probability
 | **PRD-101** | FOMC-RoBERTa Baseline | 🟢 **~85% Done** | Stratul 1 | ✅ scraper + preprocessor + ensemble (RoBERTa+Llama) + matched_filter + pipeline, 47 unit + 4 skip-guarded integration tests |
 | **PRD-102** | Economic Sentiment — Cleveland Fed Beige Book Loader | ✅ **Done** | Stratul 1 | ✅ CC-2 Done |
 | **PRD-200** | Market Pricing Pipeline | ✅ **Done** | Stratul 2 | ✅ All modules + 78 tests + notebooks 02/02b |
-| **PRD-202** | Market Pricing — FedWatch Loader & Surprise Signal | 🟢 **~95% Done** | Stratul 2 | ✅ parser + loader + surprise (3 methods), 56 tests; pending MAP.md for fedwatch/ submodule |
+| **PRD-202** | Market Pricing — FedWatch Probabilities Loader & Surprise Signal | ✅ **Done** | Stratul 2 | Shipped commits `451b1dc`, `0d1f93c`, `f49f91d`, `0cb3493` + MAP.md în `896bb97`; 56 tests green |
 | **PRD-300** | Divergence & Sentiment Trend Signal | 🟡 Reserved | Stratul 3 | ✅ CC-0 Done |
 | **PRD-400** | COT Leveraged Funds Positioning | ✅ **Done** | Stratul 4 | ✅ (rebranded CC-4) |
 | **PRD-401** | Tactical Positioning — OI + Options + Retail | ✅ **Done** | Stratul 4 | ✅ |
@@ -622,6 +622,7 @@ Registru al datoriei tehnice identificate dar deferred din cauza valorii margina
 | **TD-1** | PRD-202 | Manual weekly refresh al CME FedWatch CSV snapshots. Automation opțională via OpenClaw/Playwright. | Automation script pe `data/market_pricing/fedwatch/snapshots/` rulat weekly fără intervenție manuală. Low priority — frecvența weekly tolerabilă. |
 | **TD-2** | PRD-101 | 4 integration tests în `tests/rhetoric/test_scorers.py` necesită `pytest.skip` guard dacă `HF_TOKEN` nu e setat. Fail curent: 401 Unauthorized când HF cache e gol. | Skip guard aplicat; tests pass sau skip clean fără token; CI nu blochează la missing secret. |
 | **TD-3** | CLAUDE.md | Line 98 în CLAUDE.md referențiază `ftp.cmegroup.com/bulletin/` care nu mai există. `positioning/oi_signal.py` folosește HTTPS scraping în schimb. Docstring outdated. | CLAUDE.md line 98 updated cu sursa reală CME (HTTPS endpoint) sau marcată explicit ca deprecated. |
+| **TD-4** | Workflow | Status drift între PRD files și ROADMAP §3 registry — când actualizezi `Status:` într-un PRD file, trebuie sincronizat simultan rândul din ROADMAP §3. Caught de session audit 2026-04-15 (PRD-202 marcat `Done` în PRD file dar registry încă lista status partial). | Resolved 2026-04-15: registry update mandatory la fiecare checkout; session audit script include cross-check PRD↔ROADMAP. |
 
 ---
 
