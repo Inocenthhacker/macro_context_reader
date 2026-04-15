@@ -60,6 +60,7 @@ data/raw/*
 data/processed/*
 data/market_pricing/*.parquet
 data/market_pricing/inflation_expectations/*.parquet
+data/market_pricing/fedwatch_synthetic_cache/
 data/regime/*.parquet
 data/regime/*.pkl
 data/regime/*.npy

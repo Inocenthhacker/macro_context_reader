@@ -13,6 +13,7 @@ from .surprise import (
     compute_surprise_signal,
     compute_surprise_timeseries,
 )
+from .synthetic import build_mpt_dataset, load_mpt_history
 
 __all__ = [
     "parse_fedwatch_csv",
@@ -27,4 +28,6 @@ __all__ = [
     "DEFAULT_NLP_CALIBRATION_BPS",
     "FedWatchRow",
     "FedWatchSnapshot",
+    "build_mpt_dataset",
+    "load_mpt_history",
 ]
