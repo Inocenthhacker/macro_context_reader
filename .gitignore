@@ -93,8 +93,13 @@ Thumbs.db
 # Local test outputs (CC-8 setup artifacts)
 setup_test_output.txt
 setup_integration_output.txt
+setup_*_output.txt
 integration_after_patch*.txt
 unit_after_patch*.txt
+after_patch*.txt
+
+# Ad-hoc data dumps
+FinFut*.txt
 
 # Claude Code local harness
 .claude/
