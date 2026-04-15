@@ -172,7 +172,7 @@ surprise_score = NLP_hawkish_score - FedWatch_hawkish_probability
 | **PRD-102** | Economic Sentiment — Cleveland Fed Beige Book Loader | ✅ **Done** | Stratul 1 | ✅ CC-2 Done |
 | **PRD-200** | Market Pricing Pipeline | ✅ **Done** | Stratul 2 | ✅ All modules + 78 tests + notebooks 02/02b |
 | **PRD-202** | Market Pricing — FedWatch Probabilities Loader & Surprise Signal | ✅ **Done** | Stratul 2 | Shipped commits `451b1dc`, `0d1f93c`, `f49f91d`, `0cb3493` + MAP.md în `896bb97`; 56 tests green |
-| **PRD-300** | Divergence & Sentiment Trend Signal | 🟡 Reserved | Stratul 3 | ✅ CC-0 Done |
+| **PRD-300** | Divergence & Sentiment Trend Signal — Composite Layer 3 Integrator | 🟢 **Approved** | Stratul 3 | Industry standard scope (Q1=B+); HP+EMD decomposition (Q2); 5 calibration methods empirical (Q3+Q5); regime-conditional (Q7); analytical+bootstrap CI (Q6); real-time notifications (Q8); 7 CC-uri planned |
 | **PRD-400** | COT Leveraged Funds Positioning | ✅ **Done** | Stratul 4 | ✅ (rebranded CC-4) |
 | **PRD-401** | Tactical Positioning — OI + Options + Retail | ✅ **Done** | Stratul 4 | ✅ |
 | **PRD-500** | Output Aggregation — DST Evidence Fusion | 🟡 Reserved | Output | ✅ CC-0 Done |
@@ -348,16 +348,41 @@ macro_context_reader/
 - `data/positioning/cot_eur.parquet` — 787 rânduri, CFTC COT real, 2020-01-07 → 2026-03-31
 - `tests/positioning/` — 12 funcții de test, toate verzi
 
-### Faza 4 — Divergence Signal Integration
-> **Obiectiv:** Combinarea tuturor semnalelor în composite_divergence_score
+### Faza 4 — Layer 3 Integration (PRD-300, in progress)
 
-| Task | PRD | Status |
+**Status:** Approved 2026-04-15. Implementation starts cu CC-1 (Decomposition).
+
+**Locked architectural decisions (chat 2026-04-15):**
+- **Scope:** industry standard composite (NLP + FedWatch surprise + real_rate_diff + Cleveland Fed sentiment); COT excluded (goes to PRD-500 DST fusion)
+- **Decomposition:** HP filter + EMD parallel, empirical selection
+- **Calibration:** 5 methods parallel (OLS, Ridge, Lasso, ElasticNet, Equal-weighted), best chosen via AIC/BIC + out-of-sample MSE
+- **Regime-conditional:** weights per macro regime (consumes PRD-050)
+- **Confidence interval:** analytical (real-time) + bootstrap (validation, ~1000 iter)
+- **Frequency:** hybrid (daily for high-freq sources, event-driven for low-freq)
+- **Notifications:** real-time dispatcher cu pluggable backends (MVP stdout)
+
+**Roadmap CC sequence:**
+
+| CC | Scope | Status |
 |---|---|---|
-| Deep Current decomposition (HP/EMD/rolling) | PRD-300 / CC-1, CC-2 | ❌ |
-| EUR/USD Misalignment + GFCI (BBVA) | PRD-300 / CC-0c impl. | ❌ |
-| composite_divergence_score cu Kalman Filter | PRD-300 / CC-3, CC-4 | ❌ |
-| Backtesting comparativ metode pe USMPD | PRD-300 / CC-5 | ❌ |
-| **Milestone:** Sharpe ratio > 0 pe USMPD backtesting | — | ❌ |
+| CC-1 | Decomposition layer (HP filter + EMD + comparison) | ❌ Not Started |
+| CC-2 | Calibration layer (5 methods + selector) | ❌ Not Started |
+| CC-3 | Regime-conditional fitter + router (integrate PRD-050) | ❌ Not Started |
+| CC-4 | Composite score + analytical CI + bootstrap CI | ❌ Not Started |
+| CC-5 | Pipeline orchestrator + Parquet persistence | ❌ Not Started |
+| CC-6 | Notification dispatcher + triggers + stdout backend | ❌ Not Started |
+| CC-7 | Backtesting on USMPD + DEC-012 + MAP.md update | ❌ Not Started |
+
+**Estimated total:** 7 commits, 60+ tests, 1 DEC entry (DEC-012), 1 MAP.md update.
+
+**Dependencies satisfied:**
+- PRD-200 (real_rate_diff): ✅ Done
+- PRD-202 (FedWatch surprise): ✅ Done
+- PRD-102 (Cleveland Fed sentiment): ✅ Done
+- PRD-101 (NLP scores): 🟢 ~85% Done — sufficient for integration
+- PRD-050 (regime classifier): ✅ Done
+
+**Milestone Faza 4:** Sharpe ratio > 0 pe USMPD backtesting (AC-8 din PRD-300).
 
 ### Faza 5 — Economic Sentiment Integration (REDEFINED)
 > **Obiectiv:** Integrare scoruri Cleveland Fed Beige Book ca feature secundar în PRD-300
