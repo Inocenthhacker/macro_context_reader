@@ -1,6 +1,14 @@
+"""Divergence layer (PRD-300) — composite Layer 3 integrator.
+
+Status: PRD-300 Approved 2026-04-15. Implementation in progress (CC-1..CC-7).
+
+Currently exported:
+- decomposition: HP filter + EMD decomposition (CC-1)
+- regime_conditional: regime-conditional correlation diagnostic (CC-0d, prior work)
+
+Future (placeholders):
+- equilibrium: BBVA misalignment + GFCI proxy (CC-4/CC-5)
 """
-Divergence Layer — PRD-300 (Status: Reserved)
-Stratul 3 al arhitecturii Macro Context Reader.
-Depinde de: PRD-101 (FOMC-RoBERTa), PRD-200 (Market Pricing — necreat)
-DO NOT implement until PRD-300 is Approved.
-"""
+from . import decomposition, regime_conditional
+
+__all__ = ["decomposition", "regime_conditional"]
