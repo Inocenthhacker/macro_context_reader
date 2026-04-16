@@ -211,8 +211,7 @@ def fetch_fomc_minutes(start_year: int = 2015) -> list[FOMCDocument]:
 
     for link in soup.find_all("a", href=True):
         href = link["href"]
-        text = link.get_text(strip=True).lower()
-        if "minute" not in text:
+        if "fomcminutes" not in href:
             continue
         if not href.startswith("/"):
             continue
