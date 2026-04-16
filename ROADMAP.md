@@ -172,7 +172,7 @@ surprise_score = NLP_hawkish_score - FedWatch_hawkish_probability
 | **PRD-102** | Economic Sentiment — Cleveland Fed Beige Book Loader | ✅ **Done** | Stratul 1 | ✅ CC-2 Done |
 | **PRD-200** | Market Pricing Pipeline | ✅ **Done** | Stratul 2 | ✅ All modules + 78 tests + notebooks 02/02b |
 | **PRD-202** | Market Pricing — FedWatch Probabilities Loader & Surprise Signal | ✅ **Done** | Stratul 2 | Shipped commits `451b1dc`, `0d1f93c`, `f49f91d`, `0cb3493` + MAP.md în `896bb97`; 56 tests green |
-| **PRD-300** | Divergence & Sentiment Trend Signal — Composite Layer 3 Integrator | 🟢 **Approved** | Stratul 3 | ✅ CC-1 Done (decomposition); regime_conditional/diagnostic.py existent (12 tests); CC-2..CC-7 pending |
+| **PRD-300** | Divergence & Sentiment Trend Signal — Composite Layer 3 Integrator | 🟢 **Approved** | Stratul 3 | ✅ CC-1 Done (1/8 CCs); regime_conditional/diagnostic.py existent (12 tests); CC-1.5..CC-7 pending |
 | **PRD-301** | Equilibrium Model — BBVA Misalignment | 🟢 **Approved** | Stratul 3 | ❌ |
 | **PRD-400** | COT Leveraged Funds Positioning | ✅ **Done** | Stratul 4 | ✅ (rebranded CC-4) |
 | **PRD-401** | Tactical Positioning — OI + Options + Retail | ✅ **Done** | Stratul 4 | ✅ |
@@ -367,6 +367,7 @@ macro_context_reader/
 | CC | Scope | Status |
 |---|---|---|
 | CC-1 | Decomposition layer (HP filter + EMD + comparison) | ✅ Done (c60638b) |
+| CC-1.5 | Feature Persistence Layer (4 features → master alignment Parquet) | ❌ Not Started |
 | CC-2 | Calibration layer (5 methods + selector) | ❌ Not Started |
 | CC-3 | Regime-conditional fitter + router (integrate PRD-050) | ❌ Not Started |
 | CC-4 | Composite score + analytical CI + bootstrap CI | ❌ Not Started |
@@ -374,7 +375,7 @@ macro_context_reader/
 | CC-6 | Notification dispatcher + triggers + stdout backend | ❌ Not Started |
 | CC-7 | Backtesting on USMPD + DEC-012 + MAP.md update | ❌ Not Started |
 
-**Estimated total:** 7 commits, 60+ tests, 1 DEC entry (DEC-012), 1 MAP.md update.
+**Estimated total:** 8 commits, 75+ tests, 1 DEC entry (DEC-012), 1 MAP.md update.
 
 **Dependencies satisfied:**
 - PRD-200 (real_rate_diff): ✅ Done
