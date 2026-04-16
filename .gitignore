@@ -107,3 +107,4 @@ FinFut*.txt
 
 # Ad-hoc sanity check scripts
 _sanity_check.py
+scripts/
