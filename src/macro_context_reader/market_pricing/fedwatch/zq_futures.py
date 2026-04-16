@@ -4,7 +4,7 @@ Fed Funds Futures (ZQ) historical price ingestion from Databento.
 Data source: CME Globex MDP 3.0 (GLBX.MDP3) via Databento Historical API
 Coverage: 2010-06-07 → present (free tier dataset limitation)
 Contract: ZQ = 30-Day Federal Funds Futures (CBOT)
-Symbology: continuous front-month chains ZQ.c.0 (front) through ZQ.c.8 (9 months ahead)
+Symbology: continuous front-month chains ZQ.c.0 (front) through ZQ.c.12 (13 months ahead)
 
 These 9 continuous series together provide the input needed by pyfedwatch to
 reconstruct FOMC rate change probabilities at any historical watch_date.
@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 # Configuration constants
 DATASET_ID = "GLBX.MDP3"
 ROOT_SYMBOL = "ZQ"
-FRONT_MONTHS = 9  # ZQ.c.0 through ZQ.c.8
+FRONT_MONTHS = 13  # ZQ.c.0 through ZQ.c.12 (extended 2026-04-16 for pyfedwatch num_upcoming=8 support)
 SCHEMA = "ohlcv-1d"
 EARLIEST_AVAILABLE = "2010-06-07"  # Verified via probe — Databento GLBX.MDP3 start
 

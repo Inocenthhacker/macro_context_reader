@@ -18,12 +18,12 @@ class TestSymbolFormatting:
     def test_front_month(self):
         assert _continuous_symbol(0) == "ZQ.c.0"
 
-    def test_eighth_chain(self):
-        assert _continuous_symbol(8) == "ZQ.c.8"
+    def test_last_chain(self):
+        assert _continuous_symbol(FRONT_MONTHS - 1) == f"ZQ.c.{FRONT_MONTHS - 1}"
 
     def test_out_of_range_raises(self):
         with pytest.raises(ValueError):
-            _continuous_symbol(9)
+            _continuous_symbol(FRONT_MONTHS)
         with pytest.raises(ValueError):
             _continuous_symbol(-1)
 
@@ -45,7 +45,7 @@ class TestImpliedRate:
 class TestPersistenceRoundtrip:
     """Tests that require the parquet cache to exist (post-ingestion)."""
 
-    def test_all_9_parquets_exist(self):
+    def test_all_parquets_exist(self):
         for n in range(FRONT_MONTHS):
             path = OUTPUT_DIR / f"{_continuous_symbol(n)}.parquet"
             assert path.exists(), f"Missing: {path}"
