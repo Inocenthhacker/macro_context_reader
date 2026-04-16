@@ -173,6 +173,7 @@ surprise_score = NLP_hawkish_score - FedWatch_hawkish_probability
 | **PRD-200** | Market Pricing Pipeline | ✅ **Done** | Stratul 2 | ✅ All modules + 78 tests + notebooks 02/02b |
 | **PRD-202** | Market Pricing — FedWatch Probabilities Loader & Surprise Signal | ✅ **Done** | Stratul 2 | Shipped commits `451b1dc`, `0d1f93c`, `f49f91d`, `0cb3493` + MAP.md în `896bb97`; 56 tests green |
 | **PRD-300** | Divergence & Sentiment Trend Signal — Composite Layer 3 Integrator | 🟢 **Approved** | Stratul 3 | Industry standard scope (Q1=B+); HP+EMD decomposition (Q2); 5 calibration methods empirical (Q3+Q5); regime-conditional (Q7); analytical+bootstrap CI (Q6); real-time notifications (Q8); 7 CC-uri planned |
+| **PRD-301** | Equilibrium Model — BBVA Misalignment | 🟢 **Approved** | Stratul 3 | ❌ |
 | **PRD-400** | COT Leveraged Funds Positioning | ✅ **Done** | Stratul 4 | ✅ (rebranded CC-4) |
 | **PRD-401** | Tactical Positioning — OI + Options + Retail | ✅ **Done** | Stratul 4 | ✅ |
 | **PRD-500** | Output Aggregation — DST Evidence Fusion | 🟡 Reserved | Output | ✅ CC-0 Done |
