@@ -6,7 +6,8 @@ Currently exported:
 - decomposition: HP filter + EMD decomposition (CC-1)
 - regime_conditional: regime-conditional correlation diagnostic (CC-0d, prior work)
 - alignment: master alignment table for calibration (CC-1.5.5)
-- targets + calibration_experiment: target selection experiment (CC-2a)
+- targets + calibration_experiment: target selection experiment (CC-2a, v1 — kept for reference)
+- targets_v2 + calibration_experiment_v2: dual-target classification (CC-2a-v2, primary)
 
 Future (placeholders):
 - equilibrium: BBVA misalignment + GFCI proxy (CC-4/CC-5)
@@ -41,6 +42,27 @@ from macro_context_reader.divergence.calibration_experiment import (
     split_train_validation,
     walk_forward_cv_evaluation,
 )
+from macro_context_reader.divergence.calibration_experiment import (
+    run_full_experiment as run_full_experiment_v1,  # v1 alias for clarity
+)
+
+# --- v2 — dual-target classification (primary going forward)
+from macro_context_reader.divergence.targets_v2 import (
+    REGIME_THRESHOLD_PCT,
+    REGIME_WINDOW_DAYS,
+    SURPRISE_THRESHOLD_BPS,
+    build_targets_v2_table,
+    compute_target_regime_class,
+    compute_target_surprise_class,
+)
+from macro_context_reader.divergence.calibration_experiment_v2 import (
+    CLASSIFIERS,
+    FEATURES_FOR_CLASSIFICATION,
+    HIT_RATE_THRESHOLD,
+    MIN_NONZERO_SIGNALS_VAL,
+    EqualWeightedClassifier,
+    run_full_experiment_v2,
+)
 
 __all__ = [
     "decomposition",
@@ -52,14 +74,14 @@ __all__ = [
     "align_real_rate_to_meeting",
     "align_cleveland_fed_to_meeting",
     "align_fedwatch_to_meeting",
-    # targets
+    # v1 targets (kept for reference)
     "build_targets_table",
     "compute_target_A_fedwatch_surprise",
     "compute_target_D_real_rate_diff_change",
     "compute_target_E_eurusd_5d_return",
     "compute_target_F_eurusd_21d_return",
     "fetch_eurusd_daily",
-    # calibration experiment
+    # v1 calibration experiment
     "FEATURES_FOR_CALIBRATION",
     "METHODS",
     "PRE_COMMITTED_METRIC",
@@ -69,6 +91,21 @@ __all__ = [
     "evaluate_on_validation",
     "prepare_features_targets",
     "run_full_experiment",
+    "run_full_experiment_v1",
     "split_train_validation",
     "walk_forward_cv_evaluation",
+    # v2 targets
+    "SURPRISE_THRESHOLD_BPS",
+    "REGIME_THRESHOLD_PCT",
+    "REGIME_WINDOW_DAYS",
+    "build_targets_v2_table",
+    "compute_target_surprise_class",
+    "compute_target_regime_class",
+    # v2 calibration experiment
+    "FEATURES_FOR_CLASSIFICATION",
+    "CLASSIFIERS",
+    "HIT_RATE_THRESHOLD",
+    "MIN_NONZERO_SIGNALS_VAL",
+    "EqualWeightedClassifier",
+    "run_full_experiment_v2",
 ]
