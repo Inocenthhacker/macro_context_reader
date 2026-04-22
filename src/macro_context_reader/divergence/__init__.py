@@ -64,6 +64,17 @@ from macro_context_reader.divergence.calibration_experiment_v2 import (
     run_full_experiment_v2,
 )
 
+# --- v3 — engineered derivative features + dual classification re-run
+from macro_context_reader.divergence.feature_engineering import (
+    ENGINEERED_FEATURES,
+    build_features_v3_table,
+)
+from macro_context_reader.divergence.calibration_experiment_v3 import (
+    FEATURES_FOR_CLASSIFICATION_V3,
+    prepare_classification_data_v3,
+    run_full_experiment_v3,
+)
+
 __all__ = [
     "decomposition",
     "regime_conditional",
@@ -108,4 +119,10 @@ __all__ = [
     "MIN_NONZERO_SIGNALS_VAL",
     "EqualWeightedClassifier",
     "run_full_experiment_v2",
+    # v3 — engineered features + experiment
+    "ENGINEERED_FEATURES",
+    "build_features_v3_table",
+    "FEATURES_FOR_CLASSIFICATION_V3",
+    "prepare_classification_data_v3",
+    "run_full_experiment_v3",
 ]
